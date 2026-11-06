@@ -3406,12 +3406,18 @@ class AutoSpecCore:
                 r.reprovados.append((descricao, texto, motivo))
             return
 
-        achado = autospec_evidencia.achar_trecho(prova.trecho, contexto)
-        if achado is None:
+        # [2026-11-06] Um trecho por lugar do documento (`prova.trechos`): cada um tem de
+        # existir, e os numeros do valor saem de qualquer um deles. Execucao 393441: o valor
+        # "2 x RJ-45 (Ethernet 10/100 Mbit/s)" junta duas linhas do datasheet, e com um trecho
+        # so o 10/100 ficava de fora e o campo, vazio. Com um trecho so, a regra de sempre.
+        trechos = tuple(getattr(prova, "trechos", ()) or (prova.trecho,))
+        achados = [autospec_evidencia.achar_trecho(trecho, contexto) for trecho in trechos]
+        faltando = next((trecho for trecho, achado in zip(trechos, achados) if achado is None), None)
+        if faltando is not None:
             if contexto != contexto_completo and autospec_evidencia.achar_trecho(
-                    prova.trecho, contexto_completo):
+                    faltando, contexto_completo):
                 r.reprovados.append((descricao, texto, (
-                    f"o trecho citado ({prova.trecho[:60]!r}) e da linha de OUTRO modelo "
+                    f"o trecho citado ({faltando[:60]!r}) e da linha de OUTRO modelo "
                     f"do documento, nao do modelo deste item. Preencha a mao.")))
                 return
             imagem = _documento_de_pagina_sem_texto(prova, anexados)
@@ -3428,12 +3434,13 @@ class AutoSpecCore:
                 return
             if autospec_evidencia.deducao_permitida(texto):
                 _deduzir(f"o trecho citado pela IA nao foi achado no documento "
-                         f"({prova.trecho[:60]!r}). {prova.justificativa}".strip())
+                         f"({faltando[:60]!r}). {prova.justificativa}".strip())
             else:
                 r.reprovados.append((descricao, texto, (
-                    f"o trecho citado pela IA ({prova.trecho[:60]!r}) nao esta no "
+                    f"o trecho citado pela IA ({faltando[:60]!r}) nao esta no "
                     f"documento lido. {motivo[:1].upper()}{motivo[1:]}")))
             return
+        achado = "\n".join(achados)
 
         valor_conferivel = _com_unidade_do_enunciado(valor, descricao)
         confere, explicacoes = autospec_evidencia.valor_sai_do_trecho(valor_conferivel, achado)

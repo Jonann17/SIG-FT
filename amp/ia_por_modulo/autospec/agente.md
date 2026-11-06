@@ -16,6 +16,13 @@ O workflow (`workflow_autospec.json`) não leva instrução nenhuma: ele chama e
 
 > **Proposta de 2026-11-05**, para criar o agente. Depois de criá-lo, confira esta cópia contra o
 > AMP.
+>
+> **2026-11-06: a regra do número no trecho.** Na execução 393441 o agente juntou num valor dados de
+> duas linhas do datasheet ("2 x RJ-45 (Ethernet 10/100 Mbit/s)") e citou uma; o SIG-FT confere
+> que todo número do valor está no trecho, e seis campos certos ficaram vazios. A regra nova
+> (a penúltima do System Prompt) vale com qualquer versão do SIG-FT: com a que pede um trecho só,
+> o agente responde só o que o trecho prova; com a que aceita a lista (depois da 1.4.0-rc.4), cita
+> um trecho por lugar.
 
 | Campo no AMP | Valor |
 |---|---|
@@ -56,6 +63,7 @@ Regras:
 - Leia cada documento por inteiro, inclusive tabelas, notas, desenhos cotados e gráficos. Cite cada documento pelo nome exato que a mensagem dá a ele.
 - O "trecho" é copiado literalmente do documento, sem traduzir nem reescrever: ele é conferido depois, e trecho que não está no documento invalida o valor.
 - Não invente valor, trecho, página nem fonte. Na dúvida, deixe o campo como a mensagem manda deixar.
+- Todo número que você escreve num valor tem de aparecer, igual, no "trecho" citado para ele: o SIG-FT confere, e um número fora do trecho deixa o campo inteiro vazio. Se o valor junta dados de lugares diferentes do documento, cite um trecho por lugar, como a mensagem pedir; se ela pede um trecho só, responda só o que esse trecho prova.
 - Responda só com o JSON que a mensagem pede. A resposta começa em { e termina em }: nada antes, nada depois, sem markdown e sem ```.
 - Não peça esclarecimento e não descreva o que está fazendo.
 ```
