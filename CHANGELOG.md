@@ -44,6 +44,8 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 - Cria Fichas: a chave do Gemini só é pedida quando a IA do módulo é o **Gemini direto**. No OpenRouter e no Workflow AMP o lote roda sem ela; antes parava com "API Key não configurada.".
 - Cria Fichas: o **Código do Projeto** preenchido sozinho passa a vir da linha logo abaixo do título "GERENCIAMENTO DOS MATERIAIS SOBRESSALENTES CADASTRADOS NO PMIB" do _STATUS_PMIB. Antes era a linha acima do cabeçalho, que no _STATUS_PMIB novo é a da revisão em uso, e o campo vinha com o texto da revisão.
 - IA: quando a resposta da IA vem com um defeito de escrita no JSON, como o `\%` que o agente do AMP escreve, o SIG-FT conserta e lê a resposta inteira. Antes podia ler só um pedaço dela: no AutoSpec pelo Workflow AMP, a ficha voltava em branco. Uma resposta quebrada sem conserto passa a dar erro no console, em vez de virar um pedaço.
+- AutoSpec: o valor que junta dados de mais de um lugar do documento pode citar um trecho de prova para cada lugar. Antes, um número que estava no documento, mas fora do único trecho citado, deixava o campo vazio: no teste pelo Workflow AMP, as portas, as normas, a interface e a conexão elétrica de um acoplador WAGO voltaram vazias, com o valor certo.
+- AutoSpec: o campo de **certificado** passa a trazer as aprovações que o documento dá ao produto (CE, UL, ATEX…), e o de **proteção** passa a contar a isolação elétrica. Como o pedido à IA mudou, as fichas rodam de novo do zero, sem reaproveitar a resposta guardada.
 
 ## 1.3.2 - 2026-10-30
 
