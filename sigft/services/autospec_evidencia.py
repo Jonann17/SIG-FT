@@ -59,6 +59,17 @@ class Evidencia:
     pagina: int | None = None
     trecho: str = ""
     justificativa: str = ""
+    # [2026-11-06] Os trechos citados, um por lugar do documento. O valor que junta dados de
+    # mais de uma linha (`2 x RJ-45 (Ethernet 10/100 Mbit/s)`) cita as duas; cada uma tem de
+    # existir no documento, e os números do valor podem sair de qualquer uma. `trecho` fica com
+    # todos, separados por " | ", para quem só mostra a prova (a nota da célula, o log).
+    trechos: tuple = ()
+
+    def __post_init__(self):
+        if not self.trechos and self.trecho:
+            self.trechos = (self.trecho,)
+        elif self.trechos and not self.trecho:
+            self.trecho = " | ".join(self.trechos)
 
 
 # =============================================================================
@@ -119,14 +130,23 @@ def extrair_evidencias(bruto, campos_pedidos=None):
             continue
         if not any(chave in conteudo for chave in _CHAVES_DE_PROVA):
             continue
+        trechos = _trechos(conteudo.get("trecho"))
         provas[campo] = Evidencia(
             tipo=_tipo(conteudo.get("tipo")),
             fonte=str(conteudo.get("fonte") or "").strip(),
             pagina=_pagina(conteudo.get("pagina")),
-            trecho=str(conteudo.get("trecho") or "").strip(),
+            trecho=" | ".join(trechos),
             justificativa=str(conteudo.get("justificativa") or "").strip(),
+            trechos=trechos,
         )
     return provas
+
+
+def _trechos(escrito):
+    """O `trecho` da resposta como tupla: um texto só (o formato de sempre) ou uma lista, um
+    trecho por lugar do documento (2026-11-06). Item vazio sai."""
+    itens = escrito if isinstance(escrito, (list, tuple)) else [escrito]
+    return tuple(str(item).strip() for item in itens if item is not None and str(item).strip())
 
 
 # =============================================================================
