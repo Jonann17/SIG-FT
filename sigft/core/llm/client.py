@@ -715,47 +715,81 @@ def _sem_virgula_sobrando(texto: str) -> str:
     return "".join(saida)
 
 
-def _candidatos_balanceados(texto: str):
-    """Cada trecho `{...}`/`[...]` balanceado do texto, na ordem, contando as
-    chaves fora das strings. Trecho que nao fecha (resposta truncada) nao
-    vira candidato."""
-    for inicio, c in enumerate(texto):
-        if c not in "{[":
+def _fim_do_bloco(texto: str, inicio: int) -> int | None:
+    """Onde fecha o trecho `{...}`/`[...]` que abre em `inicio`, contando as
+    chaves fora das strings; `None` se ele nao fecha (resposta truncada) ou
+    fecha com o sinal trocado."""
+    pilha, em_string, escape = [], False, False
+    for fim in range(inicio, len(texto)):
+        d = texto[fim]
+        if em_string:
+            if escape:
+                escape = False
+            elif d == "\\":
+                escape = True
+            elif d == '"':
+                em_string = False
             continue
-        pilha, em_string, escape = [], False, False
-        for fim in range(inicio, len(texto)):
-            d = texto[fim]
-            if em_string:
-                if escape:
-                    escape = False
-                elif d == "\\":
-                    escape = True
-                elif d == '"':
-                    em_string = False
-                continue
-            if d == '"':
-                em_string = True
-            elif d in "{[":
-                pilha.append("}" if d == "{" else "]")
-            elif d in "}]":
-                if not pilha or pilha.pop() != d:
-                    break
-                if not pilha:
-                    yield texto[inicio:fim + 1]
-                    break
+        if d == '"':
+            em_string = True
+        elif d in "{[":
+            pilha.append("}" if d == "{" else "]")
+        elif d in "}]":
+            if not pilha or pilha.pop() != d:
+                return None
+            if not pilha:
+                return fim
+    return None
+
+
+def _candidatos_balanceados(texto: str):
+    """Cada trecho `{...}`/`[...]` balanceado DE FORA do texto, na ordem.
+
+    Um trecho que nao e o JSON (a prosa "o formato {campo: valor}") e pulado
+    INTEIRO: nunca vira candidato um pedaco de DENTRO dele. [2026-11-06] Antes
+    cada `{` era um comeco, e com o objeto da resposta quebrado a leitura
+    devolvia um campo de dentro dele: no AutoSpec pelo Workflow AMP, a ficha
+    voltou em branco (o `\\%` do agente, ver `_sem_escape_invalido`). Um
+    trecho que nao fecha (resposta truncada) encerra a busca: o resto do texto
+    esta dentro dele."""
+    inicio = 0
+    while inicio < len(texto):
+        if texto[inicio] not in "{[":
+            inicio += 1
+            continue
+        fim = _fim_do_bloco(texto, inicio)
+        if fim is None:
+            return
+        yield texto[inicio:fim + 1]
+        inicio = fim + 1
+
+
+# As sequências de escape que o JSON aceita depois da barra.
+_ESCAPES_DO_JSON = frozenset('"\\/bfnrtu')
+
+
+def _sem_escape_invalido(texto: str) -> str:
+    """A barra antes de um caractere que o JSON nao aceita como escape sai, e
+    a barra escrita (`\\\\`) fica. [2026-11-06] O agente do AMP escreve
+    `95\\%` dentro do JSON, como escrevia `100\\%` no CSS da revisao das
+    listas."""
+    return re.sub(r"\\(.)", lambda m: m.group(0) if m.group(1) in _ESCAPES_DO_JSON else m.group(1),
+                  texto, flags=re.DOTALL)
 
 
 def _json_tolerante(texto: str):
-    """A resposta que a leitura estrita recusou, com tres consertos: tira o
+    """A resposta que a leitura estrita recusou, com quatro consertos: tira o
     bloco de raciocinio (`<think>...</think>` dos modelos que pensam em voz
     alta), acha o JSON de verdade no meio da prosa (o primeiro trecho
-    balanceado que e JSON) e tira a virgula sobrando antes de fechar. Devolve
+    balanceado DE FORA que e JSON), tira a virgula sobrando antes de fechar e
+    tira a barra de escape que o JSON nao aceita (2026-11-06). Devolve
     `_NADA` se nada der certo. Ideia do `_robust_json_parse` do RAG-Anything
     (HKUDS, licenca MIT). JSON truncado continua falhando: completar o que a IA
     nao mandou esconderia campos perdidos."""
     limpo = _BLOCO_THINK.sub("", texto).replace("```json", "").replace("```", "")
     for candidato in _candidatos_balanceados(limpo):
-        for versao in (candidato, _sem_virgula_sobrando(candidato)):
+        sem_virgula = _sem_virgula_sobrando(candidato)
+        for versao in (candidato, sem_virgula, _sem_escape_invalido(candidato), _sem_escape_invalido(sem_virgula)):
             try:
                 return json.loads(versao)
             except json.JSONDecodeError:

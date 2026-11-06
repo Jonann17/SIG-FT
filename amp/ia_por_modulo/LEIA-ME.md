@@ -35,8 +35,10 @@ O SIG-FT (`sigft/core/llm/providers/amp_workflow.py`) faz um POST com o cabeçal
 O workflow junta `system` e `prompt` no `chatInput` (o AMP Agent só lê esse campo), chama o agente
 e devolve `{"ok": true, "modo": "ia", "tarefa": ..., "texto": "<a resposta>", "json_valido": ...,
 "execucao": ...}`. Se a resposta deve ser JSON, o nó **Prepara a resposta** recorta o JSON do meio da
-narração do agente (texto antes, ```json em volta). Sem JSON válido, vai o texto todo e
-`json_valido: false`: o SIG-FT ainda tenta a leitura tolerante.
+narração do agente (texto antes, ```json em volta) e conserta o `\%` que o agente escreve dentro
+dele. Ele só aceita o JSON **de fora, inteiro**: nunca um pedaço de dentro. Sem JSON válido, vai o
+texto todo e `json_valido: false`: o SIG-FT ainda tenta a leitura tolerante, com os mesmos
+consertos.
 
 Com documentos, o workflow confere que todos chegaram antes de chamar o agente, e a resposta diz
 quantos ele recebeu (`arquivos_recebidos`). Sem essa conta, ou com menos arquivos do que foram, o
@@ -164,6 +166,37 @@ no Workflow AMP mandaria só o texto e perderia as páginas escaneadas.
 4. Compare com as mesmas fichas pela IA Externa (se já rodaram nela, a resposta guardada volta sem
    custo).
 
+## Atualizar o nó "Prepara a resposta"
+
+Cada módulo tem a sua versão do workflow (`"versao"` em `MODULOS`, no gerador):
+
+| Módulo | Versão | Por quê |
+|---|---|---|
+| Cria Fichas | 2026-11-05 | o workflow validado na GE em 05/11. **Não muda** (decisão do Luan, 06/11): o teste `test_o_workflow_do_cria_fichas_e_o_validado_em_05_11` trava o JSON pelo hash |
+| AutoSpec | 2026-11-06 | o nó conserta o `\%` do agente e nunca devolve um pedaço do JSON |
+
+O Cria Fichas segue com o recorte antigo: se um dia o agente escrever `\%` numa resposta dele, os
+itens daquele bloco chegam à revisão sem o PDM da IA (aparece na revisão; não passa em silêncio).
+
+Quando o código do nó muda, não precisa reimportar o workflow (que obrigaria a refazer a credencial
+e o agente):
+1. no n8n, abra o workflow → nó **Prepara a resposta**;
+2. apague o código e cole o novo, tirado do `.json` do módulo (o `jsCode` desse nó) ou do arquivo
+   que o Claude mandar;
+3. salve e publique.
+
+A resposta diz a versão do código que rodou (`versao_workflow`).
+
+## O que os testes ensinaram
+
+- **06/11, AutoSpec, execução 393441: a ficha voltou em branco.** O agente respondeu os 49 campos
+  certos, mas escreveu `95\%` dentro do JSON, e o JSON não aceita `\%`. O objeto inteiro não abria,
+  e o nó antigo recortou um pedaço de dentro dele: o objeto do primeiro campo (`{"valor": ...,
+  "tipo": ...}`). O AutoSpec descartou as chaves que não eram campos, e o console disse "A IA
+  respondeu 6 campo(s) que não foram pedidos e serão ignorados: fonte, justificativa, pagina, tipo,
+  trecho, valor". O mesmo agente já escrevia `100\%` no CSS da revisão das listas. Desde
+  2026-11-06 o nó e a leitura do SIG-FT consertam o `\%` e não aceitam mais um pedaço.
+
 ## Se der errado
 
 | Sintoma | Onde olhar |
@@ -179,6 +212,7 @@ no Workflow AMP mandaria só o texto e perderia as páginas escaneadas.
 | AutoSpec: "o workflow não confirmou que recebeu os arquivos anexados" | o endereço do AutoSpec é o de outro workflow (o do Cria Fichas não leva arquivos): use o que termina em `/webhook/sigft-ia-autospec` |
 | AutoSpec: "recebeu X de N arquivo(s)", ou HTTP 400, etapa `arquivos` | algum arquivo se perdeu: veja a aba Binary do **Webhook do SIG-FT** na execução, e se o **Monta a mensagem** tem *Include Other Input Fields* |
 | AutoSpec: HTTP 413 | os documentos passaram do limite de tamanho do n8n: a ficha é refeita com o texto, sozinha |
+| AutoSpec: "A IA respondeu N campo(s) que não foram pedidos... fonte, justificativa, pagina, tipo, trecho, valor" | o workflow devolveu um pedaço do JSON: o nó **Prepara a resposta** é anterior a 2026-11-06; atualize o código dele |
 
 Com o número da execução (`execucao`), o n8n mostra em que nó ela parou (menu **Executions**).
 
@@ -186,7 +220,7 @@ Com o número da execução (`execucao`), o n8n mostra em que nó ela parou (men
 
 1. Em `gerar_workflow.py`, acrescente o módulo em `MODULOS` (título, caminho do webhook, nome do
    agente, tarefas da tela, onde se escolhe o modo, `sempre_json` e `com_arquivos`, se a tarefa
-   manda documentos) e rode o gerador.
+   manda documentos) e rode o gerador. Sem `"versao"`, ele usa o código atual do nó.
 2. Crie `<módulo>/agente.md` no molde do `cria_fichas/agente.md`: o system prompt é curto, e as
    regras ficam no prompt do SIG-FT.
 3. `tests/test_amp_workflow_ia_por_modulo.py` já cobre o módulo novo: o `.json` igual ao gerador,

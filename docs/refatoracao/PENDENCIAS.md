@@ -957,3 +957,9 @@ duble. Depois, rodar a suite com a 9.2 e tirar o `<9.2`.~~
 |---|---|---|---|
 | 2026-10-28 | Mural do CLAUDE.md | Aviso que saiu do mural para dar lugar ao do AutoSpec no Workflow AMP: 🔴 **Como funciona e boas-vindas:** o `ModuloAutoSpec` ganhou o bloco "Como funciona" abaixo do título; o texto mora em `sigft/app/como_funciona.py`, chave `"AutoSpec"` (mudou o comportamento da tela? mude o texto junto).<br>Rafael: teus testes de tela não mudam, o `conftest` liga `SIGFT_SEM_COMO_FUNCIONA=1` (tire para testar com o bloco); a página de boas-vindas nova também nasce desligada (`SIGFT_SEM_BOAS_VINDAS`). | Absorvido; fica como registro. |
 
+## 2026-11-06 — AutoSpec: a resposta ruim fica no cache
+
+| Data | Descoberto em | Descrição | Destino proposto |
+|---|---|---|---|
+| 2026-11-06 | AutoSpec no Workflow AMP (execução 393441) | O AutoSpec grava no cache de resposta (`Documentos\SIG-FT\autospec_resposta_cache.json`) o JSON que a IA devolveu antes de conferir se ele preenche algum campo pedido. Quando a leitura trouxe um pedaço (o objeto de um campo, só com chaves "não pedidas"), a ficha voltou em branco e o rerun da mesma ficha serve o mesmo pedaço do cache, sem chamar a IA. A causa do pedaço foi corrigida no workflow e na leitura do SIG-FT; quem já rodou precisa renomear o arquivo do cache. | Frente do AutoSpec: não gravar no cache a resposta sem nenhum campo pedido (`generate_ai_response`, `_cache_resposta_gravar`). |
+

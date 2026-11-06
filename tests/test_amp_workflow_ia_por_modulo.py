@@ -7,6 +7,7 @@ resposta" recorta o JSON da narração do agente (rodando o código do nó no No
 """
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import shutil
@@ -41,7 +42,19 @@ MODULOS = sorted(GERADOR.MODULOS)
 @pytest.mark.parametrize("modulo", MODULOS)
 def test_o_json_versionado_e_o_que_o_gerador_produz(modulo):
     versionado = _workflow(GERADOR.arquivo_do_modulo(modulo))
-    assert versionado == GERADOR.montar_workflow(modulo, GERADOR.VERSAO_WORKFLOW)
+    assert versionado == GERADOR.montar_workflow(modulo)
+
+
+# O workflow do Cria Fichas importado e validado na GE em 05/11 (o arquivo de `1b69506`).
+HASH_CRIA_FICHAS_VALIDADO = "6df78291913bd654ef063b42e167dc618b9e52763fe77557d305dbd5652b2a01"
+
+
+def test_o_workflow_do_cria_fichas_e_o_validado_em_05_11():
+    """Decisão do Luan (06/11): o workflow do Cria Fichas não muda. O conserto do `\\%` de 06/11
+    foi só para o AutoSpec; o gerador continua produzindo, byte a byte, o JSON validado."""
+    gerado = GERADOR.montar_workflow("cria_fichas")
+    texto = json.dumps(gerado, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    assert hashlib.sha256(texto).hexdigest() == HASH_CRIA_FICHAS_VALIDADO
 
 
 @pytest.mark.parametrize("modulo", MODULOS)
@@ -82,7 +95,6 @@ def test_com_arquivos_o_workflow_leva_e_confere_os_documentos(modulo):
     else:
         assert "includeOtherFields" not in monta
         assert len(condicoes) == 1
-        assert "arquivos_recebidos" not in js
 
 
 def test_o_provedor_le_o_campo_que_o_workflow_devolve():
@@ -187,3 +199,44 @@ def test_prepara_com_arquivos_conta_os_que_chegaram_ao_agente(tmp_path):
 def test_prepara_sem_arquivos_nao_fala_de_arquivos(tmp_path):
     resposta = _prepara("[]", tmp_path=tmp_path, binario={"x": {"fileName": "a.pdf"}})
     assert "arquivos_recebidos" not in resposta and "arquivos" not in resposta
+
+
+# -- a execução 393441 (06/11): o "\%" do agente e o pedaço de dentro --------------------
+
+@SEM_NODE
+def test_prepara_conserta_a_barra_antes_do_porcento(tmp_path):
+    """O agente escreveu "95\\%" dentro do JSON, escape que o JSON não aceita: o objeto inteiro
+    não abria, e o nó devolvia o primeiro campo no lugar da ficha."""
+    saida = ('{"texto_breve_material":{"valor":"ACOPLADOR MODBUS TCP","tipo":"deducao"},\n'
+             '"controle_temp_umidade":{"valor":"até 95\\% sem condensação","trecho":"95 \\%"},\n'
+             '"var_row_97":{"valor":"IP20","trecho":"Protection type\\nIP20"}}')
+    resposta = _prepara(saida, tarefa="autospec", json_pedido="sim", tmp_path=tmp_path, modulo="autospec")
+    assert resposta["json_valido"] is True
+    assert json.loads(resposta["texto"]) == {
+        "texto_breve_material": {"valor": "ACOPLADOR MODBUS TCP", "tipo": "deducao"},
+        "controle_temp_umidade": {"valor": "até 95% sem condensação", "trecho": "95 %"},
+        "var_row_97": {"valor": "IP20", "trecho": "Protection type\nIP20"},
+    }
+
+
+@SEM_NODE
+def test_prepara_nunca_devolve_um_pedaco_de_dentro_do_json(tmp_path):
+    """Objeto quebrado sem conserto: vai o texto todo, com json_valido falso, e nunca um campo."""
+    saida = '{"a":{"valor":"x"},"b":{"valor":"y"} "c": sem aspas}'
+    resposta = _prepara(saida, tmp_path=tmp_path, modulo="autospec")
+    assert (resposta["json_valido"], resposta["texto"]) == (False, saida)
+
+
+@SEM_NODE
+def test_prepara_json_cortado_nao_vira_o_primeiro_campo(tmp_path):
+    saida = '{"a":{"valor":"x"},"b":{"valor":"y"},"c":{"val'
+    resposta = _prepara(saida, tmp_path=tmp_path, modulo="autospec")
+    assert (resposta["json_valido"], resposta["texto"]) == (False, saida)
+
+
+@SEM_NODE
+def test_prepara_nao_mexe_na_barra_valida(tmp_path):
+    """`\\\\` (a barra escrita) seguida de "%" continua uma barra; `\\n` continua a quebra."""
+    saida = '{"c":"C:\\\\%x%","p":"95\\%","n":"a\\nb"}'
+    resposta = _prepara(saida, tmp_path=tmp_path, modulo="autospec")
+    assert json.loads(resposta["texto"]) == {"c": "C:\\%x%", "p": "95%", "n": "a\nb"}
