@@ -21,7 +21,9 @@ Módulos prontos:
 - **AutoSpec** (`autospec/`): leva os documentos ao agente; precisa de uma versão **depois da
   1.4.0-rc.2** (a que traz, nas novidades, "AutoSpec: pode rodar no Workflow AMP");
 - **Upload de Características** (`upload_caracteristicas/`): sem documentos; roda em qualquer versão
-  que tenha a IA por módulo (desde a 1.4.0-rc.1).
+  que tenha a IA por módulo (desde a 1.4.0-rc.1). Testado na GE em 2026-11-06;
+- **Upload de Condições** (`upload_condicoes/`): sem documentos, uma chamada por ficha; roda em
+  qualquer versão que tenha a IA por módulo (desde a 1.4.0-rc.1).
 
 Um módulo por vez, cada um testado antes do seguinte (decisão do Luan, 2026-11-05).
 
@@ -197,6 +199,35 @@ no Workflow AMP mandaria só o texto e perderia as páginas escaneadas.
 2. No console, o erro de IA diz o que rodou: "Erro ao chamar IA (amp_workflow / workflow)".
 3. Compare com as mesmas fichas pela IA Externa, antes de subir ao portal.
 
+## Ligar o Upload de Condições (uma vez)
+
+1. **O agente, no AMP:** crie o **Spare Parts Conditions Normalizer** com o texto de
+   `upload_condicoes/agente.md`, como os outros (sem data source e sem *Add Optimized Query*).
+2. **O workflow, no n8n:** os mesmos passos do Cria Fichas, com
+   `upload_condicoes/workflow_upload_condicoes.json`: importe, crie a credencial `X-SIGFT-Chave`
+   com um valor **novo**, escolha o agente no nó **AMP Agent** com o **Timeout** no máximo, publique
+   e copie a **Production URL**, que termina em `/webhook/sigft-ia-upload-condicoes`.
+3. **No SIG-FT:** **Upload de Condições** (4.1. Upload Condições) → **Configurar IA** → **Workflow
+   AMP**, e preencha o endereço e a chave.
+
+### Como o Upload de Condições usa o workflow
+
+- Uma chamada por ficha, no botão do processamento por IA: o SIG-FT manda a instrução de sistema
+  (`SYSTEM_CONDICOES`, com a REGRA 0 de fidelidade ao fornecedor) e o prompt com os dados brutos da
+  ficha, e o workflow junta os dois na mensagem.
+- A resposta é um **objeto** JSON, com os textos em `_pt` e `_es`. O nó "Prepara a resposta"
+  conserta o `\%` e recorta o objeto da narração do agente.
+- Ficha que falha não para o lote: o console diz "Falha definitiva no PMIB ..." e segue.
+
+### Testar o Upload de Condições
+
+1. Duas ou três fichas, de preferência uma com campo em branco e uma com medidas sem unidade.
+2. Abra a planilha que o processamento grava (a que você escolhe ao salvar) e compare com as mesmas
+   fichas pela IA Externa, antes de subir ao portal: campo vazio vira "Não aplicável" /
+   "No aplicable", nenhuma norma ou lei aparece sem estar na ficha, e as medidas ficam em cm e kg.
+   A revisão antes do portal (`conferir_condicoes`) continua valendo, venha a resposta de onde vier.
+3. No console, o erro de IA diz o que rodou: "Erro ao chamar IA (amp_workflow / workflow)".
+
 ## Atualizar o nó "Prepara a resposta"
 
 Cada módulo tem a sua versão do workflow (`"versao"` em `MODULOS`, no gerador):
@@ -206,6 +237,7 @@ Cada módulo tem a sua versão do workflow (`"versao"` em `MODULOS`, no gerador)
 | Cria Fichas | 2026-11-05 | o workflow validado na GE em 05/11. **Não muda** (decisão do Luan, 06/11): o teste `test_o_workflow_do_cria_fichas_e_o_validado_em_05_11` trava o JSON pelo hash |
 | AutoSpec | 2026-11-06 | o nó conserta o `\%` do agente e nunca devolve um pedaço do JSON |
 | Upload de Características | 2026-11-06 | nasceu com o código atual do nó |
+| Upload de Condições | 2026-11-06 | nasceu com o código atual do nó |
 
 O Cria Fichas segue com o recorte antigo: se um dia o agente escrever `\%` numa resposta dele, os
 itens daquele bloco chegam à revisão sem o PDM da IA (aparece na revisão; não passa em silêncio).

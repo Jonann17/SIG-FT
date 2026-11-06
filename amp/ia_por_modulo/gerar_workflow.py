@@ -78,6 +78,17 @@ MODULOS = {
         "sempre_json": True,
         "com_arquivos": False,
     },
+    # 2026-11-06 (pedido do Luan): uma chamada por ficha, a tarefa `condicoes`, que responde um
+    # OBJETO JSON (o SIG-FT grava `res_json["pmib_codigo"]` logo depois).
+    "upload_condicoes": {
+        "titulo": "Upload de Condições",
+        "caminho": "sigft-ia-upload-condicoes",
+        "agente": "Spare Parts Conditions Normalizer",
+        "tarefas": ("condicoes",),
+        "onde": "Upload de Condições (4.1. Upload Condições) → **Configurar IA**",
+        "sempre_json": True,
+        "com_arquivos": False,
+    },
 }
 
 WEBHOOK = "Webhook do SIG-FT"
