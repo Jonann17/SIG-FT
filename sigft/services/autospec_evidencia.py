@@ -333,17 +333,75 @@ _RE_NORMA = re.compile(
 )
 
 
-def tem_numero(valor):
-    """O valor tem algum número -- fora o da designação de uma norma?"""
+def tem_numero(valor, modelo=""):
+    """O valor tem algum número -- fora o da designação de uma norma e o do modelo do item?"""
     resto = _RE_NORMA.sub(" ", str(valor or ""))
+    resto = _sem_o_modelo(resto, modelo)
     return bool(re.search(r"\d", resto))
 
 
-def deducao_permitida(valor):
+# [2026-11-06] O NOME DO MODELO NAO E MEDIDA. Rodada da 1.4.0-rc.5 pelo Workflow AMP: a aplicação
+# e a função do acoplador WAGO 750-362 caíram como "número deduzido", e o número era o 750 de
+# "sistema WAGO I/O 750" -- a série do próprio modelo (coluna MARCA/MODELO do _STATUS_PMIB). Só
+# vale número de 3 algarismos ou mais e sem unidade: o `3` de `3K6` não libera `3 polos`, e o
+# `750` de `750 W` continua sendo potência.
+_RE_NUMERO_DE_MODELO = re.compile(r"(?<!\d)\d{3,}(?!\d)")
+# Solto: sem letra colada e sem casa decimal (`750,5`); a vírgula da lista (`750, ligando`) não
+# é casa decimal.
+_RE_NUMERO_SOLTO_NO_TEXTO = re.compile(r"(?<!\w)(?<!\d[.,])\d{3,}(?!\w)(?![.,]\d)")
+
+
+def _sem_o_modelo(texto, modelo):
+    """O texto sem o código do modelo e sem os números dele que não são medida."""
+    modelo = str(modelo or "").strip()
+    if not modelo:
+        return texto
+    texto = re.sub(re.escape(modelo), " ", texto, flags=re.IGNORECASE)
+    do_modelo = set(_RE_NUMERO_DE_MODELO.findall(modelo))
+    if not do_modelo:
+        return texto
+    medidos = {valor for valor, _unidade in un.extrair_medidas(texto)}
+    return _RE_NUMERO_SOLTO_NO_TEXTO.sub(
+        lambda m: " " if m.group() in do_modelo and float(m.group()) not in medidos else m.group(),
+        texto)
+
+
+def deducao_permitida(valor, modelo=""):
     """O valor pode entrar na ficha por DEDUÇÃO técnica?
 
-    Só se não tiver número -- fora o número de uma norma. `Cobre prateado`,
-    `Interno`, `OUTROS`, `IEC 60269-4` sim; `IP65`, `NEMA 4X`, `1,3 x In`,
-    `250 mm` não.
+    Só se não tiver número -- fora o número de uma norma e o do modelo do item.
+    `Cobre prateado`, `Interno`, `OUTROS`, `IEC 60269-4` sim; `IP65`, `NEMA 4X`,
+    `1,3 x In`, `250 mm` não. Com `modelo="750-362"`, `sistema WAGO I/O 750` sim e
+    `750 W` não.
     """
-    return PERMITIR_DEDUCAO_EM_TEXTO and not tem_numero(valor)
+    return PERMITIR_DEDUCAO_EM_TEXTO and not tem_numero(valor, modelo)
+
+
+# =============================================================================
+# 5. Os itens de um valor
+# =============================================================================
+# [2026-11-06] Rodada da 1.4.0-rc.5 pelo Workflow AMP (WAGO 750-362): as normas e as aprovações
+# vieram certas, um trecho por lugar do documento, e os dois campos ficaram vazios porque UM item
+# de cada (duas normas, a UL61010-2-201) não estava nos trechos citados. Decisão do Luan: gravar os
+# itens que o trecho prova. A conferência item a item mora em
+# `autospec.AutoSpecCore._gravar_itens_provados`; aqui só o corte.
+def itens_do_valor(valor):
+    """Os itens de um valor, separados por `;` fora de parênteses e colchetes.
+
+    `CE; UL (UL 121201; UL 61010-2-201); ATEX` -> `["CE", "UL (UL 121201; UL 61010-2-201)",
+    "ATEX"]`. Só o ponto e vírgula separa: a vírgula está na casa decimal (`0,5`) e dentro do
+    item (`ABS, DNV, PRS`), e o prompt pede `;` entre os itens.
+    """
+    itens, atual, profundidade = [], [], 0
+    for caractere in str(valor or ""):
+        if caractere in "([":
+            profundidade += 1
+        elif caractere in ")]" and profundidade:
+            profundidade -= 1
+        if caractere == ";" and not profundidade:
+            itens.append("".join(atual))
+            atual = []
+            continue
+        atual.append(caractere)
+    itens.append("".join(atual))
+    return [item.strip() for item in itens if item.strip()]

@@ -44,18 +44,17 @@ from sigft.services import autospec, autospec_unidades as un
 @pytest.mark.parametrize("pergunta,esperada", [
     ("14 - DIMENSIONS (Indicate the dimensions of the item in (mm))", "mm"),
     ("1 - FAIXA DE TEMPERATURA (Indicar a faixa em grau Celsius (°C).)", "c"),
+    # VOLT e AMPERE desde 2026-11-06 (PENDENCIAS.md, 2026-09-15). O ampere so com
+    # o A MAIUSCULO depois de um numero: o `a` do `0 a 70 °C` continua conector,
+    # com teste proprio (`test_autospec_unidades_eletricas.py`).
+    ("4 - TENSAO DE ALIMENTACAO (Indicar a tensão de alimentação do item em (V))", "v"),
+    ("16 - CORRENTE NOMINAL (Indicar a corrente nominal do item em (A))", "A"),
 ])
 def test_a_unidade_sai_do_enunciado(pergunta, esperada):
     assert un.unidade_declarada(pergunta) == esperada
 
 
 @pytest.mark.parametrize("pergunta", [
-    # VOLT e AMPERE ainda NAO sao unidades conhecidas do modulo, e a segunda
-    # nao pode virar: `a` e o conector de intervalo em portugues, e aceita-lo
-    # como ampere quebraria `0 a 70 °C`, que tem teste proprio. Medido em
-    # 2026-09-15 e registrado em PENDENCIAS.md.
-    "4 - TENSAO DE ALIMENTACAO (Indicar a tensão de alimentação do item em (V))",
-    "16 - CORRENTE NOMINAL (Indicar a corrente nominal do item em (A))",
     # Várias unidades listadas: qual delas? Chutar seria pior que não agir.
     "2 - SINAL DE ENTRADA (Indicar o sinal do item em (mV, V, A, mA) ex.: 4-20mA)",
     # Sem unidade nenhuma.

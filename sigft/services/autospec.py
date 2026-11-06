@@ -1218,6 +1218,7 @@ class _ConferenciaDoLastro:
         self.corrigidos = []   # (descricao, valor_da_ia, valor_gravado, motivo)
         self.deducoes = []     # (descricao, valor, justificativa)
         self.de_imagem = []    # (descricao, valor, onde)
+        self.parciais = []     # (descricao, valor_gravado, itens_de_fora)
         self.notas = {}        # campo -> comentario da celula
 
 
@@ -3249,6 +3250,11 @@ class AutoSpecCore:
 
         for campo, valor in (valores or {}).items():
             descricao = str((missing.get(campo) or {}).get("desc") or campo)
+            if not str(valor if valor is not None else "").strip():
+                # [2026-11-06] Vazio não é dedução nem reprovação: é a IA dizendo que o documento
+                # não responde (`"valor": "", "tipo": "deducao"`). O console contava esses campos
+                # como "preenchidos por DEDUCAO"; `fill_save` já não grava vazio.
+                continue
             if not _exige_lastro(campo):
                 r.aprovados[campo] = valor
                 continue
@@ -3311,6 +3317,16 @@ class AutoSpecCore:
                     f"{depois[:22]!r} — {motivo[:70]}",
                     nivel="warn",
                 )
+
+        if r.parciais:
+            cb.log(
+                f"{len(r.parciais)} campo(s) gravados SEM os itens que o trecho citado nao "
+                f"prova. Confira na fonte e complete a mao, se for o caso:",
+                nivel="warn",
+            )
+            for descricao, gravado, fora in r.parciais:
+                cb.log(f"      · {descricao[:60]} = {gravado[:60]!r}", nivel="warn")
+                cb.log(f"        ficou de fora: {fora}", nivel="warn")
 
         if reprovados:
             cb.log(
@@ -3378,6 +3394,9 @@ class AutoSpecCore:
         sem prova entra como DEDUÇÃO marcada.
         """
         texto = str(valor)
+        # O número do MODELO do item não é medida deduzida (2026-11-06): `sistema WAGO I/O 750`
+        # para o 750-362. Ver `autospec_evidencia._sem_o_modelo`.
+        modelo = getattr(self, "_modelo_do_item", "") or ""
 
         def _deduzir(justificativa):
             r.aprovados[campo] = valor
@@ -3387,7 +3406,7 @@ class AutoSpecCore:
             ).strip()
 
         if prova.tipo == "deducao":
-            if autospec_evidencia.deducao_permitida(texto):
+            if autospec_evidencia.deducao_permitida(texto, modelo):
                 _deduzir(prova.justificativa or "(a IA nao justificou)")
             else:
                 r.reprovados.append((descricao, texto, (
@@ -3399,7 +3418,7 @@ class AutoSpecCore:
             status, motivo = self._lastro_legado(campo, valor, descricao, contexto, r)
             if status != "reprovado":
                 return
-            if autospec_evidencia.deducao_permitida(texto):
+            if autospec_evidencia.deducao_permitida(texto, modelo):
                 _deduzir(prova.justificativa or
                          "a IA citou o documento sem copiar o trecho, e o texto nao aparece nele")
             else:
@@ -3432,10 +3451,12 @@ class AutoSpecCore:
             status, motivo = self._lastro_legado(campo, valor, descricao, contexto, r)
             if status != "reprovado":
                 return
-            if autospec_evidencia.deducao_permitida(texto):
+            if autospec_evidencia.deducao_permitida(texto, modelo):
                 _deduzir(f"o trecho citado pela IA nao foi achado no documento "
                          f"({faltando[:60]!r}). {prova.justificativa}".strip())
-            else:
+            elif not self._gravar_itens_provados(
+                    campo, valor, descricao, "\n".join(a for a in achados if a), r,
+                    porque=f"o trecho {faltando[:60]!r} nao esta no documento lido"):
                 r.reprovados.append((descricao, texto, (
                     f"o trecho citado pela IA ({faltando[:60]!r}) nao esta no "
                     f"documento lido. {motivo[:1].upper()}{motivo[1:]}")))
@@ -3457,8 +3478,43 @@ class AutoSpecCore:
             r.aprovados[campo] = certo
             r.corrigidos.append((descricao, texto, certo, motivo))
             return
+        if self._gravar_itens_provados(campo, valor, descricao, achado, r):
+            return
         r.reprovados.append((descricao, texto, (
             f"o valor nao sai do trecho que a IA citou ({achado[:70]!r}): {motivo}")))
+
+    @staticmethod
+    def _gravar_itens_provados(campo, valor, descricao, achado, r, porque=""):
+        """Grava os itens do valor que o trecho prova; `False` se nenhum prova (2026-11-06).
+
+        Rodada da 1.4.0-rc.5 pelo Workflow AMP (WAGO 750-362): as normas e as aprovações
+        vieram certas, e UM item de cada sem prova no trecho (duas normas, a UL61010-2-201)
+        esvaziava o campo inteiro. Decisão do Luan: ficam os itens provados. Cada item passa
+        pela mesma regra do valor inteiro (`valor_sai_do_trecho`), e o que fica de fora vai
+        para o console e para a nota da célula. Valor de um item só não muda nada. `porque`
+        vai junto quando um trecho citado nem existe no documento: é sinal de invenção.
+        """
+        if not achado:
+            return False
+        itens = autospec_evidencia.itens_do_valor(valor)
+        if len(itens) < 2:
+            return False
+        provados, de_fora = [], []
+        for item in itens:
+            confere, _explicacoes = autospec_evidencia.valor_sai_do_trecho(
+                _com_unidade_do_enunciado(item, descricao), achado)
+            (provados if confere else de_fora).append(item)
+        if not provados:
+            return False
+        gravado = "; ".join(provados)
+        r.aprovados[campo] = gravado
+        if de_fora:
+            fora = "; ".join(de_fora) + (f" ({porque})" if porque else "")
+            r.parciais.append((descricao, gravado, fora))
+            r.notas[campo] = (
+                f"AutoSpec: ficou de fora o que o trecho citado nao prova: {fora}. "
+                f"Confira no documento.")
+        return True
 
     def _conferir_fontes_citadas(self, contexto, callbacks=None):
         """Denuncia fonte citada que não corresponde a documento lido.

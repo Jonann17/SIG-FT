@@ -421,6 +421,14 @@ Sai caro resolver direito: exige o simbolo com contexto (`24 A`, `4-20 mA`)
 distinguido do conector, provavelmente por regex propria. Volt sozinho e
 seguro, mas meia solucao. Fica para uma rodada dedicada.
 
+**RESOLVIDO em 2026-11-06** (rodada da 1.4.0-rc.5 pelo Workflow AMP: `280 mA` ->
+`0.28 A` reprovado no WAGO 750-362). Corrente (`A`, `mA`, `kA`, `uA`) e tensao
+(`v`, `mv`, `kv`) entraram em `_FATORES`. O ampere e a regex propria prevista
+aqui: `_RE_AMPERE` guarda o A MAIUSCULO logo depois de um numero, sem letra
+colada e sem outro numero em seguida, e `_normalizar` deixa so ele fora das
+minusculas. O `a` minusculo nunca vira unidade: `0 a 70 °C`, `0 A 55 °C` (caixa
+alta) e `750 à rede` seguem sem ampere (`tests/test_autospec_unidades_eletricas.py`).
+
 ---
 
 ## 2026-09-21 — o `--smoke` pode rodar no CI do Linux, com xvfb

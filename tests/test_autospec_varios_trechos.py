@@ -92,14 +92,17 @@ def test_com_um_trecho_so_o_mesmo_valor_continua_reprovado():
     assert "var_row_83" not in aprovados
 
 
-def test_trecho_da_lista_que_nao_existe_reprova_o_valor_e_diz_qual():
+def test_trecho_da_lista_que_nao_existe_deixa_o_item_dele_de_fora_e_diz_qual():
+    """O trecho inventado não prova nada: o item dele fica de fora, e o console diz qual trecho
+    não está no documento. Até a rc.5 o campo inteiro ficava vazio; desde 2026-11-06 os itens
+    que os outros trechos provam ficam (`test_autospec_itens_provados.py`, decisão do Luan)."""
     core = _core({"var_row_101": ev.Evidencia(
         trechos=("Connection technology: system supply 2 x CAGE CLAMP", "Fieldbus connection 4 x RJ-45"),
         fonte="Data sheet 750-362.pdf")})
     cb, linhas = _logs()
     aprovados = core._filtrar_por_lastro(
         {"var_row_101": "2 x CAGE CLAMP; 4 x RJ-45"}, {"var_row_101": {"desc": PERGUNTA_CONEXAO}}, DOC_WAGO, cb)
-    assert "var_row_101" not in aprovados
+    assert aprovados == {"var_row_101": "2 x CAGE CLAMP"}
     assert any("Fieldbus connection 4 x RJ-45" in mensagem for _nivel, mensagem in linhas)
 
 
