@@ -1231,6 +1231,13 @@ def montar_autospec(txt_brv, fab, desc_comp, context, desc_list_texto):
     - cota de desenho sem unidade segue a unidade do desenho.
 
     A concatenação com `desc_list_texto` no FIM continua igual.
+
+    2026-11-06 (pedido do Luan, depois do AutoSpec pelo Workflow AMP, execução 393441):
+    - o "trecho" pode ser uma LISTA, um por lugar do documento: o agente juntou num valor
+      duas linhas do datasheet e citou uma, e o número da outra esvaziou o campo. A conferência
+      (`autospec._conferir_pela_prova`) acha cada trecho e tira os números da união;
+    - CERTIFICADO são as aprovações que o documento dá ao produto, e a isolação conta como
+      PROTEÇÃO (o agente do AMP deixava os dois vazios; o OpenRouter já os preenchia assim).
     """
     return f"""Você é um engenheiro de especificação técnica. Preencha a ficha técnica de um material sobressalente de usina hidrelétrica (Itaipu) a partir dos documentos abaixo. A ficha vai para o cadastro oficial: cada valor precisa vir com a prova de onde saiu.
 
@@ -1255,13 +1262,15 @@ COMO RESPONDER
 8. Campos [ESTRITO] de TEXTO (material, norma, aplicação, uso, tipo construtivo, montagem, acoplamento): se o documento não disser, mas o tipo de equipamento tornar a resposta tecnicamente segura, responda com "tipo": "deducao" e explique em "justificativa". Se não for seguro, deixe "".
 9. Campos [INFO TÉCNICA PADRÃO]: gere com base em boas práticas de armazenagem e manuseio deste tipo de material, com "tipo": "deducao".
 10. 'empilhamento': só um número inteiro.
+11. Campo de CERTIFICADO: liste as aprovações e certificações que o documento dá ao produto (ex.: CE, UL, ATEX, IECEx, DNV), mesmo que o enunciado fale em certificado "necessário".
+12. Campo de PROTEÇÃO: conte também a isolação elétrica que o documento traz (ex.: "isolação 500 V"), além de curto-circuito, sobretensão, ESD e as demais proteções.
 
 A PROVA
-11. "trecho": copie LITERALMENTE do documento o pedaço de onde o valor saiu (até uns 200 caracteres), sem traduzir nem reescrever. Ele é conferido contra o documento: trecho que não existe invalida o valor.
-12. "fonte": o nome do documento exatamente como aparece acima, ou "conhecimento tecnico" na dedução. "pagina": o número da página, quando houver.
+13. "trecho": copie LITERALMENTE do documento o pedaço de onde o valor saiu (até uns 200 caracteres), sem traduzir nem reescrever. Ele é conferido contra o documento: trecho que não existe invalida o valor. Todo número do valor tem de aparecer no trecho. Se o valor junta dados de mais de um lugar do documento, mande uma lista, um trecho por lugar: "trecho": ["...", "..."].
+14. "fonte": o nome do documento exatamente como aparece acima, ou "conhecimento tecnico" na dedução. "pagina": o número da página, quando houver.
 
 Responda com um objeto JSON, uma entrada por ID pedido:
-{{"ID": {{"valor": "...", "tipo": "documento" | "calculo" | "deducao", "fonte": "...", "pagina": 1, "trecho": "...", "justificativa": "..."}}}}
+{{"ID": {{"valor": "...", "tipo": "documento" | "calculo" | "deducao", "fonte": "...", "pagina": 1, "trecho": "..." | ["...", "..."], "justificativa": "..."}}}}
 
 CAMPOS A PREENCHER:
 """ + desc_list_texto
