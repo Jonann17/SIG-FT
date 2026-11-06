@@ -81,6 +81,13 @@ _FATORES = {
     "frequencia": {"hz": 1.0, "khz": 1e3},
     # ---- área (base: m2) --------------------------------------------
     "area": {"m2": 1.0, "cm2": 1e-4, "mm2": 1e-6, "in2": 6.4516e-4},
+    # ---- corrente e tensão (2026-11-06) -----------------------------
+    # Rodada da 1.4.0-rc.5 pelo Workflow AMP (WAGO 750-362): `280 mA` -> `0.28 A`, conta
+    # certa, reprovada porque a tabela não tinha eletricidade. O ampere fica com o A
+    # MAIÚSCULO, de propósito: o `a` minúsculo é o da faixa (`0 a 55 °C`) e o da preposição
+    # (`750 à rede`). Ver `_com_ampere_marcado`.
+    "corrente": {"A": 1.0, "mA": 1e-3, "kA": 1e3, "uA": 1e-6},
+    "tensao": {"v": 1.0, "mv": 1e-3, "kv": 1e3},
 }
 
 # Unidade -> grandeza, para achar a dimensão a partir do símbolo.
@@ -118,11 +125,29 @@ _RE_EXPOENTE_SOLTO = re.compile(r"\bm\s*([²³])")
 _RE_VAZAO_ESPACADA = re.compile(r"\bm\s*([23])\s*/\s*(h|min|s)\b")
 
 
+# O AMPERE (2026-11-06): `A` maiúsculo logo depois de um número, sem letra colada e sem outro
+# número em seguida -- `0 A 55 °C`, em caixa alta, continua sendo faixa. O prefixo vai junto
+# (`mA`, `kA`, `µA`).
+_RE_AMPERE = re.compile(r"(?<=\d)(\s{0,2})([mkuμµ]?)A(?![A-Za-z0-9])(?!\s*[+\-−]?\d)")
+
+
+def _com_ampere_marcado(texto):
+    """O texto em minúsculas, menos o A de cada ampere (`280 mA`, `0.28 A`)."""
+    partes, fim = [], 0
+    for m in _RE_AMPERE.finditer(texto):
+        partes.append(texto[fim:m.start()].lower())
+        prefixo = m.group(2).lower().replace("μ", "u").replace("µ", "u")
+        partes.append(f"{m.group(1)}{prefixo}A")
+        fim = m.end()
+    partes.append(texto[fim:].lower())
+    return "".join(partes)
+
+
 def _normalizar(texto):
     s = _RE_EXPOENTE_SOLTO.sub(lambda m: "m" + ("2" if m.group(1) == "²" else "3"),
                                str(texto or ""))
     s = unicodedata.normalize("NFKD", s)
-    s = "".join(c for c in s if not unicodedata.combining(c)).lower()
+    s = _com_ampere_marcado("".join(c for c in s if not unicodedata.combining(c)))
     s = _RE_VAZAO_ESPACADA.sub(r"m\1/\2", s)
     s = _RE_POR_MINUTO.sub("rpm", s)
     return _RE_MIN_A_MENOS_UM.sub("min-1", s)
@@ -206,7 +231,11 @@ _RE_UNIDADE_ADIANTE = re.compile(
 
 
 def _unidade_valida(bruta):
-    u = str(bruta or "").strip().lower().lstrip("°")
+    bruto = str(bruta or "").strip()
+    if bruto[-1:] == "A":
+        # O ampere, que `_normalizar` deixou maiúsculo; o `a` minúsculo não é unidade.
+        return bruto if bruto in _GRANDEZA_DA_UNIDADE else None
+    u = bruto.lower().lstrip("°")
     if u in _GRANDEZA_DA_UNIDADE or u in _TEMPERATURA or ("°" + u) in _TEMPERATURA:
         return u
     return None
