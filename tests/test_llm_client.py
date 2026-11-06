@@ -240,6 +240,32 @@ def test_json_truncado_continua_falhando_mesmo_com_o_conserto():
         _limpar_e_parsear_json('{"a": 1, "b": [1, 2')
 
 
+# --- 2026-11-06: a execução 393441 do AutoSpec no Workflow AMP ---
+# O agente escreveu "\\%" dentro do JSON (escape que o JSON não aceita), o objeto inteiro não
+# abria, e a leitura tolerante devolvia um campo de DENTRO dele: a ficha voltava em branco.
+
+def test_barra_antes_do_porcento_e_consertada_e_o_objeto_inteiro_volta():
+    texto = '{"a": {"valor": "95\\% sem condensação", "trecho": "95 \\%"}, "b": {"valor": "IP20"}}'
+    assert _limpar_e_parsear_json(texto) == {"a": {"valor": "95% sem condensação", "trecho": "95 %"},
+                                              "b": {"valor": "IP20"}}
+
+
+def test_o_conserto_da_barra_nao_mexe_na_barra_escrita():
+    # Vírgula sobrando força a leitura tolerante; `\\\\%` é a barra escrita seguida de "%".
+    texto = '{"c": "C:\\\\%x%", "p": "95\\%", "n": "a\\nb",}'
+    assert _limpar_e_parsear_json(texto) == {"c": "C:\\%x%", "p": "95%", "n": "a\nb"}
+
+
+def test_objeto_quebrado_nao_devolve_um_pedaco_de_dentro():
+    with pytest.raises(json.JSONDecodeError):
+        _limpar_e_parsear_json('{"a": {"valor": "x"}, "b": {"valor": "y"} "c": sem aspas}')
+
+
+def test_json_truncado_com_objeto_completo_dentro_continua_falhando():
+    with pytest.raises(json.JSONDecodeError):
+        _limpar_e_parsear_json('{"a": {"valor": "x"}, "b": {"valor": "y"}, "c": {"va')
+
+
 # =============================================================================
 # B. LLMClient.generate — retry, rate-limit, sleep, propagação de exceção,
 #    preenchimento de LLMResponse. Tudo com provider/sleep_fn/time_fn FAKES.
