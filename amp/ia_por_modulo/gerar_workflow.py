@@ -50,6 +50,9 @@ MODULOS = {
         "onde": "Cria Fichas → **Configurar IA**",
         "sempre_json": True,
         "com_arquivos": False,
+        # Decisão do Luan (06/11): o workflow do Cria Fichas, validado na GE em 05/11, não muda.
+        # O conserto do "\\%" de 06/11 foi só para o AutoSpec (`JS_PREPARA_2026_11_05`).
+        "versao": "2026-11-05",
     },
     # O "onde" é a janela central, que vale para todas as telas; o botão "Configurar IA" chegou
     # à tela do AutoSpec depois (2026-11-05), e a nota não mudou para o .json importado continuar
@@ -168,8 +171,7 @@ return [{ json: { resposta } }];
 
 
 # Os arquivos que chegaram ao agente (o SIG-FT confere a conta, `arquivos_recebidos`, quando
-# mandou anexo). Vai em todos os módulos (sem arquivos, conta zero), para o código do nó ser um
-# só: é ele que se cola no "Prepara a resposta" de cada workflow (2026-11-06).
+# mandou anexo). No código de 2026-11-06 vai em todo módulo (sem arquivos, conta zero).
 JS_ARQUIVOS = """const binarios = $('__MONTA__').first().binary || {};
 resposta.arquivos = Object.values(binarios).map(b => b.fileName || '?');
 resposta.arquivos_recebidos = resposta.arquivos.length;
@@ -185,6 +187,55 @@ def nomes_do_modulo(modulo: str) -> dict:
     if MODULOS[modulo]["com_arquivos"]:
         return {"checa": TEM_PEDIDO, "recusa": INCOMPLETO}
     return {"checa": TEM_PROMPT, "recusa": SEM_PROMPT}
+
+
+# O código do nó como ele foi validado no Cria Fichas em 05/11, sem mudar uma letra. O recorte
+# dele desce para dentro do JSON quando o objeto não abre (o `\\%` do agente): é o defeito que o
+# `JS_PREPARA` de 2026-11-06 conserta, e que o Luan escolheu não levar para o Cria Fichas.
+JS_PREPARA_2026_11_05 = r"""// Prepara a resposta ao SIG-FT. As instrucoes da tarefa vem do SIG-FT, no prompt.
+const VERSAO = '__VERSAO__';
+const SEMPRE_JSON = __SEMPRE_JSON__;
+const pedido = $('__WEBHOOK__').first().json.body || {};
+const tarefa = String(pedido.tarefa || '');
+const querJson = SEMPRE_JSON || String(pedido.json || '') === 'sim';
+const bruto = String($input.first().json.output ?? '').trim();
+
+// O primeiro trecho que e JSON valido: de um [ ou { ate o ] ou } que fecha. O agente
+// as vezes narra antes ("Vou analisar os itens [1 a 15]...") ou poe ```json em volta.
+function recortaJson(texto) {
+  const limpo = texto.replace(/```(?:json)?/gi, '');
+  let inicios = 0;
+  for (let i = 0; i < limpo.length && inicios < 200; i++) {
+    const c = limpo[i];
+    if (c !== '[' && c !== '{') continue;
+    inicios++;
+    const fecha = c === '[' ? ']' : '}';
+    let fim = limpo.lastIndexOf(fecha);
+    for (let tentativas = 0; fim > i && tentativas < 50; tentativas++) {
+      const trecho = limpo.slice(i, fim + 1);
+      try { JSON.parse(trecho); return trecho; } catch (e) { /* tenta um fecho antes */ }
+      fim = limpo.lastIndexOf(fecha, fim - 1);
+    }
+  }
+  return null;
+}
+
+let texto = bruto;
+let json_valido = null;
+if (querJson && bruto) {
+  const recorte = recortaJson(bruto);
+  json_valido = recorte !== null;
+  if (recorte !== null) texto = recorte;   // sem JSON valido, vai o texto todo: o SIG-FT tenta ler
+}
+const ok = texto.length > 0;
+const resposta = { ok, modo: 'ia', tarefa, texto, json_valido, caracteres_do_agente: bruto.length,
+                   versao_workflow: VERSAO, execucao: $execution.id };
+if (!ok) { resposta.etapa = 'agente'; resposta.erro = 'o agente respondeu vazio'; }
+return [{ json: { resposta } }];
+"""
+
+# O código do nó de cada versão do workflow; módulo sem "versao" usa a atual (`VERSAO_WORKFLOW`).
+CODIGOS_DO_PREPARA = {"2026-11-05": JS_PREPARA_2026_11_05, VERSAO_WORKFLOW: JS_PREPARA}
 
 
 def _id(modulo: str, nome: str) -> str:
@@ -218,10 +269,11 @@ def _liga(*destinos: str) -> dict:
     return {"main": [[{"node": d, "type": "main", "index": 0}] for d in destinos]}
 
 
-def montar_workflow(modulo: str, versao: str) -> dict:
+def montar_workflow(modulo: str, versao: str | None = None) -> dict:
     """O workflow pronto para importar: webhook → ping, ou mensagem → prompt? → agente → resposta
     (sem prompt, 400; erro do agente, 502)."""
     m = MODULOS[modulo]
+    versao = versao or m.get("versao", VERSAO_WORKFLOW)
     v = f"'{versao}'"
     arquivos = m["com_arquivos"]
     nomes = nomes_do_modulo(modulo)
@@ -230,7 +282,7 @@ def montar_workflow(modulo: str, versao: str) -> dict:
     nota = (NOTA.replace("__TITULO__", m["titulo"]).replace("__AGENTE__", m["agente"])
             .replace("__ONDE__", m["onde"]).replace("__TAREFAS__", tarefas)
             .replace("__ARQUIVOS_NOTA__", NOTA_ARQUIVOS if arquivos else ""))
-    js = (JS_PREPARA.replace("__VERSAO__", versao).replace("__WEBHOOK__", WEBHOOK)
+    js = (CODIGOS_DO_PREPARA[versao].replace("__VERSAO__", versao).replace("__WEBHOOK__", WEBHOOK)
           .replace("__SEMPRE_JSON__", "true" if m["sempre_json"] else "false")
           .replace("__ARQUIVOS__", JS_ARQUIVOS.replace("__MONTA__", MONTA)))
     if arquivos:
@@ -305,7 +357,7 @@ def main(argv: list[str] | None = None) -> int:
     for modulo in MODULOS:
         destino = arquivo_do_modulo(modulo)
         destino.parent.mkdir(parents=True, exist_ok=True)
-        destino.write_text(json.dumps(montar_workflow(modulo, VERSAO_WORKFLOW), indent=2, ensure_ascii=False)
+        destino.write_text(json.dumps(montar_workflow(modulo), indent=2, ensure_ascii=False)
                            + "\n", encoding="utf-8")
         print(f"Gravado: {destino}")
     return 0

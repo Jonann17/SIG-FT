@@ -7,6 +7,7 @@ resposta" recorta o JSON da narração do agente (rodando o código do nó no No
 """
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import shutil
@@ -41,7 +42,19 @@ MODULOS = sorted(GERADOR.MODULOS)
 @pytest.mark.parametrize("modulo", MODULOS)
 def test_o_json_versionado_e_o_que_o_gerador_produz(modulo):
     versionado = _workflow(GERADOR.arquivo_do_modulo(modulo))
-    assert versionado == GERADOR.montar_workflow(modulo, GERADOR.VERSAO_WORKFLOW)
+    assert versionado == GERADOR.montar_workflow(modulo)
+
+
+# O workflow do Cria Fichas importado e validado na GE em 05/11 (o arquivo de `1b69506`).
+HASH_CRIA_FICHAS_VALIDADO = "6df78291913bd654ef063b42e167dc618b9e52763fe77557d305dbd5652b2a01"
+
+
+def test_o_workflow_do_cria_fichas_e_o_validado_em_05_11():
+    """Decisão do Luan (06/11): o workflow do Cria Fichas não muda. O conserto do `\\%` de 06/11
+    foi só para o AutoSpec; o gerador continua produzindo, byte a byte, o JSON validado."""
+    gerado = GERADOR.montar_workflow("cria_fichas")
+    texto = json.dumps(gerado, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    assert hashlib.sha256(texto).hexdigest() == HASH_CRIA_FICHAS_VALIDADO
 
 
 @pytest.mark.parametrize("modulo", MODULOS)
@@ -78,18 +91,10 @@ def test_com_arquivos_o_workflow_leva_e_confere_os_documentos(modulo):
         assert monta.get("includeOtherFields") is True
         assert [c["leftValue"] for c in condicoes] == ["={{ $json.chatInput }}", "={{ Object.keys($binary || {}).length }}"]
         assert condicoes[1]["rightValue"] == "={{ Number($json.body.arquivos || 0) }}"
+        assert "resposta.arquivos_recebidos" in js
     else:
         assert "includeOtherFields" not in monta
         assert len(condicoes) == 1
-    assert "resposta.arquivos_recebidos" in js
-
-
-def test_o_codigo_do_prepara_e_o_mesmo_em_todos_os_modulos():
-    """2026-11-06: um código só para colar no nó "Prepara a resposta" de cada workflow. Sem
-    arquivos, ele conta zero (o SIG-FT só confere a conta quando mandou anexo)."""
-    codigos = {m: _no(_workflow(GERADOR.arquivo_do_modulo(m)), "Prepara a resposta")["parameters"]["jsCode"]
-               for m in MODULOS if GERADOR.MODULOS[m]["sempre_json"]}
-    assert len(set(codigos.values())) == 1
 
 
 def test_o_provedor_le_o_campo_que_o_workflow_devolve():
@@ -191,9 +196,9 @@ def test_prepara_com_arquivos_conta_os_que_chegaram_ao_agente(tmp_path):
 
 
 @SEM_NODE
-def test_prepara_sem_arquivos_conta_zero(tmp_path):
-    resposta = _prepara("[]", tmp_path=tmp_path)
-    assert (resposta["arquivos"], resposta["arquivos_recebidos"]) == ([], 0)
+def test_prepara_sem_arquivos_nao_fala_de_arquivos(tmp_path):
+    resposta = _prepara("[]", tmp_path=tmp_path, binario={"x": {"fileName": "a.pdf"}})
+    assert "arquivos_recebidos" not in resposta and "arquivos" not in resposta
 
 
 # -- a execução 393441 (06/11): o "\%" do agente e o pedaço de dentro --------------------

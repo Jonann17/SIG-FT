@@ -168,15 +168,24 @@ no Workflow AMP mandaria só o texto e perderia as páginas escaneadas.
 
 ## Atualizar o nó "Prepara a resposta"
 
-O código desse nó é **o mesmo nos dois workflows** (Cria Fichas e AutoSpec). Quando ele muda, não
-precisa reimportar o workflow, que obrigaria a refazer a credencial e o agente:
+Cada módulo tem a sua versão do workflow (`"versao"` em `MODULOS`, no gerador):
+
+| Módulo | Versão | Por quê |
+|---|---|---|
+| Cria Fichas | 2026-11-05 | o workflow validado na GE em 05/11. **Não muda** (decisão do Luan, 06/11): o teste `test_o_workflow_do_cria_fichas_e_o_validado_em_05_11` trava o JSON pelo hash |
+| AutoSpec | 2026-11-06 | o nó conserta o `\%` do agente e nunca devolve um pedaço do JSON |
+
+O Cria Fichas segue com o recorte antigo: se um dia o agente escrever `\%` numa resposta dele, os
+itens daquele bloco chegam à revisão sem o PDM da IA (aparece na revisão; não passa em silêncio).
+
+Quando o código do nó muda, não precisa reimportar o workflow (que obrigaria a refazer a credencial
+e o agente):
 1. no n8n, abra o workflow → nó **Prepara a resposta**;
 2. apague o código e cole o novo, tirado do `.json` do módulo (o `jsCode` desse nó) ou do arquivo
    que o Claude mandar;
 3. salve e publique.
 
-A resposta diz a versão do código que rodou (`versao_workflow`): a de 2026-11-06 é a que conserta o
-`\%`.
+A resposta diz a versão do código que rodou (`versao_workflow`).
 
 ## O que os testes ensinaram
 
@@ -211,7 +220,7 @@ Com o número da execução (`execucao`), o n8n mostra em que nó ela parou (men
 
 1. Em `gerar_workflow.py`, acrescente o módulo em `MODULOS` (título, caminho do webhook, nome do
    agente, tarefas da tela, onde se escolhe o modo, `sempre_json` e `com_arquivos`, se a tarefa
-   manda documentos) e rode o gerador.
+   manda documentos) e rode o gerador. Sem `"versao"`, ele usa o código atual do nó.
 2. Crie `<módulo>/agente.md` no molde do `cria_fichas/agente.md`: o system prompt é curto, e as
    regras ficam no prompt do SIG-FT.
 3. `tests/test_amp_workflow_ia_por_modulo.py` já cobre o módulo novo: o `.json` igual ao gerador,
