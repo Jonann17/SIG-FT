@@ -67,6 +67,17 @@ MODULOS = {
         "sempre_json": True,
         "com_arquivos": True,
     },
+    # 2026-11-06: as três chamadas da tela (normalizar as características, a segunda chance com
+    # o motivo da recusa e "uma opção por lista") são a tarefa `tech_specs`, e respondem lista.
+    "upload_caracteristicas": {
+        "titulo": "Upload de Características",
+        "caminho": "sigft-ia-upload-caracteristicas",
+        "agente": "Spare Parts Spec Normalizer",
+        "tarefas": ("tech_specs",),
+        "onde": "Upload de Características (4.3. Upload Specs) → **Configurar IA**",
+        "sempre_json": True,
+        "com_arquivos": False,
+    },
 }
 
 WEBHOOK = "Webhook do SIG-FT"

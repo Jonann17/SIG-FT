@@ -19,7 +19,9 @@ resposta é mudar o prompt no SIG-FT, e as duas IAs ganham juntas.
 Módulos prontos:
 - **Cria Fichas** (`cria_fichas/`): testado na GE em 2026-11-05, as duas passadas;
 - **AutoSpec** (`autospec/`): leva os documentos ao agente; precisa de uma versão **depois da
-  1.4.0-rc.2** (a que traz, nas novidades, "AutoSpec: pode rodar no Workflow AMP").
+  1.4.0-rc.2** (a que traz, nas novidades, "AutoSpec: pode rodar no Workflow AMP");
+- **Upload de Características** (`upload_caracteristicas/`): sem documentos; roda em qualquer versão
+  que tenha a IA por módulo (desde a 1.4.0-rc.1).
 
 Um módulo por vez, cada um testado antes do seguinte (decisão do Luan, 2026-11-05).
 
@@ -166,6 +168,35 @@ no Workflow AMP mandaria só o texto e perderia as páginas escaneadas.
 4. Compare com as mesmas fichas pela IA Externa (se já rodaram nela, a resposta guardada volta sem
    custo).
 
+## Ligar o Upload de Características (uma vez)
+
+1. **O agente, no AMP:** crie o **Spare Parts Spec Normalizer** com o texto de
+   `upload_caracteristicas/agente.md`, como os outros (sem data source e sem *Add Optimized Query*).
+2. **O workflow, no n8n:** os mesmos passos do Cria Fichas, com
+   `upload_caracteristicas/workflow_upload_caracteristicas.json`: importe, crie a credencial
+   `X-SIGFT-Chave` com um valor **novo**, escolha o agente no nó **AMP Agent** com o **Timeout** no
+   máximo, publique e copie a **Production URL**, que termina em
+   `/webhook/sigft-ia-upload-caracteristicas`.
+3. **No SIG-FT:** **Upload de Características** (4.3. Upload Specs) → **Configurar IA** → **Workflow
+   AMP**, e preencha o endereço e a chave.
+
+### Como o Upload de Características usa o workflow
+
+- Uma chamada por ficha, para **normalizar** as características: o SIG-FT manda a instrução de
+  sistema (`SYSTEM_TECH_SPECS`) e o prompt com os dados, e o workflow junta os dois na mensagem.
+- Se a resposta vier fora do formato, o SIG-FT faz **uma segunda chamada**, com o motivo da recusa
+  ("[Formato] Pedindo correção" no console).
+- Se alguma característica do tipo LISTA vier com mais de uma opção, faz **mais uma**, pedindo o
+  número da opção.
+- As três vão ao mesmo workflow e ao mesmo agente, e respondem uma lista JSON. Cada uma é uma
+  execução no n8n.
+
+### Testar o Upload de Características
+
+1. Uma ou duas fichas.
+2. No console, o erro de IA diz o que rodou: "Erro ao chamar IA (amp_workflow / workflow)".
+3. Compare com as mesmas fichas pela IA Externa, antes de subir ao portal.
+
 ## Atualizar o nó "Prepara a resposta"
 
 Cada módulo tem a sua versão do workflow (`"versao"` em `MODULOS`, no gerador):
@@ -174,6 +205,7 @@ Cada módulo tem a sua versão do workflow (`"versao"` em `MODULOS`, no gerador)
 |---|---|---|
 | Cria Fichas | 2026-11-05 | o workflow validado na GE em 05/11. **Não muda** (decisão do Luan, 06/11): o teste `test_o_workflow_do_cria_fichas_e_o_validado_em_05_11` trava o JSON pelo hash |
 | AutoSpec | 2026-11-06 | o nó conserta o `\%` do agente e nunca devolve um pedaço do JSON |
+| Upload de Características | 2026-11-06 | nasceu com o código atual do nó |
 
 O Cria Fichas segue com o recorte antigo: se um dia o agente escrever `\%` numa resposta dele, os
 itens daquele bloco chegam à revisão sem o PDM da IA (aparece na revisão; não passa em silêncio).
