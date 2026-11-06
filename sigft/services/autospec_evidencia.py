@@ -347,3 +347,33 @@ def deducao_permitida(valor):
     `250 mm` não.
     """
     return PERMITIR_DEDUCAO_EM_TEXTO and not tem_numero(valor)
+
+
+# =============================================================================
+# 5. Os itens de um valor
+# =============================================================================
+# [2026-11-06] Rodada da 1.4.0-rc.5 pelo Workflow AMP (WAGO 750-362): as normas e as aprovações
+# vieram certas, um trecho por lugar do documento, e os dois campos ficaram vazios porque UM item
+# de cada (duas normas, a UL61010-2-201) não estava nos trechos citados. Decisão do Luan: gravar os
+# itens que o trecho prova. A conferência item a item mora em
+# `autospec.AutoSpecCore._gravar_itens_provados`; aqui só o corte.
+def itens_do_valor(valor):
+    """Os itens de um valor, separados por `;` fora de parênteses e colchetes.
+
+    `CE; UL (UL 121201; UL 61010-2-201); ATEX` -> `["CE", "UL (UL 121201; UL 61010-2-201)",
+    "ATEX"]`. Só o ponto e vírgula separa: a vírgula está na casa decimal (`0,5`) e dentro do
+    item (`ABS, DNV, PRS`), e o prompt pede `;` entre os itens.
+    """
+    itens, atual, profundidade = [], [], 0
+    for caractere in str(valor or ""):
+        if caractere in "([":
+            profundidade += 1
+        elif caractere in ")]" and profundidade:
+            profundidade -= 1
+        if caractere == ";" and not profundidade:
+            itens.append("".join(atual))
+            atual = []
+            continue
+        atual.append(caractere)
+    itens.append("".join(atual))
+    return [item.strip() for item in itens if item.strip()]
