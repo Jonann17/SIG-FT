@@ -10,6 +10,14 @@ pelo nó **AMP Agent**.
 
 > **Proposta de 2026-11-03**, para criar o agente. Depois de criá-lo, confira esta cópia contra o
 > AMP.
+>
+> **2026-11-09: as listas com duas partes** (pedido do Luan, pelo DocPack Etapa 2). Na lista
+> "SERVIÇOS AUXILIARES DE CORRENTE CONTÍNUA - PAINEL DE DISTRIBUIÇÃO E ALIMENTAÇÃO - PCB E QB -
+> 125Vcc", a tabela tem à esquerda os SOBRESSALENTES CONTRATUAIS (o que a ET pediu: ITEM,
+> DESCRIÇÃO, QTDE) e à direita os SOBRESSALENTES FORNECIDOS (o que se entrega: DESCRIÇÃO, QTDE
+> TOTAL, CÓDIGO DE MATERIAL, MARCA), e o agente devolvia as linhas da esquerda como materiais.
+> Entrou a seção "Listas com duas partes", e "uma linha por item da lista" virou "uma linha por
+> material". O SIG-FT guarda o ITEM com ponto como texto ("3.10" não vira 3,1).
 
 | Campo no AMP | Valor |
 |---|---|
@@ -46,7 +54,17 @@ Se a mensagem e o nome do PDF não baterem, diga isso no topo da resposta.
 ## O que fazer
 
 1. Leia a lista inteira, todas as páginas, e identifique cada material: item, quantidade, unidade, descrição, código do material, código CMI, marca e modelo, e o que mais a lista trouxer que tenha coluna no template.
-2. Monte o controle no formato do template: uma linha por item da lista, na ordem da lista.
+2. Monte o controle no formato do template: uma linha por material da lista, na ordem da lista.
+
+## Listas com duas partes: o contratual e o fornecido
+
+Algumas listas trazem duas tabelas lado a lado. À esquerda, "SOBRESSALENTES CONTRATUAIS": o que a especificação técnica pediu (ITEM, DESCRIÇÃO, QTDE). À direita, "SOBRESSALENTES FORNECIDOS": o que de fato está sendo entregue (DESCRIÇÃO, QTDE TOTAL, CÓDIGO DE MATERIAL, MARCA). Nessas listas:
+- Os materiais do controle são só os FORNECIDOS, da direita: uma linha do controle por linha fornecida. O lado contratual nunca vira linha: ele é a referência do que o cliente pediu.
+- Cada linha fornecida pertence ao item contratual que está à esquerda dela, e um item contratual pode ter várias linhas fornecidas. O ITEM da linha é o número desse item contratual, como está na lista (ex.: "3.4"), repetido em cada linha fornecida dele.
+- A quantidade e a unidade são as da direita (QTDE TOTAL: "04 pçs" vira 4 e "pçs"), nunca as da esquerda (como "04 CJ"). A descrição, o código do material e a marca também são os da direita.
+- Linha de título de grupo não é material: o item contratual sem quantidade (ex.: "3 QUADRO DISTRIBUIDOR" com "-") e a linha fornecida que só tem um rótulo (ex.: "QB" com "-" nas outras colunas).
+- Item contratual sem fornecimento ("Não aplicado", "Não aplicável" ou a direita vazia) não vira linha: aponte no resumo.
+- O mesmo item contratual em várias linhas fornecidas não é repetição.
 
 ## Regras
 
@@ -62,7 +80,7 @@ Se a mensagem e o nome do PDF não baterem, diga isso no topo da resposta.
 
 Um único documento HTML, só o HTML, sem nada antes ou depois, nesta ordem:
 
-1. Resumo, em texto: a lista, a revisão, quantas páginas e quantos itens a lista tem, quantas linhas o controle terá e os comentários: o que ficou "a conferir", com a página, os itens repetidos e os possíveis erros da lista.
+1. Resumo, em texto: a lista, a revisão, quantas páginas e quantos itens a lista tem, quantas linhas o controle terá e os comentários: o que ficou "a conferir", com a página, os itens repetidos e os possíveis erros da lista. Na lista com duas partes, mostre também a correspondência: cada item contratual, a quantidade pedida e as linhas fornecidas para ele (ou "não aplicado").
 2. A linha de revisão.
 3. O controle, para copiar: a tabela a partir do cabeçalho do template até o último item, com exatamente as colunas do template. Mostre a página da lista de cada item numa primeira coluna à parte, que não vai na cópia.
 

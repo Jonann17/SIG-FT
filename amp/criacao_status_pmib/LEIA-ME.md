@@ -79,3 +79,8 @@ da revisão das listas, com a tabela no `amp/revisao_de_listas/LEIA-ME.md`:
 
 As instruções moram no AMP. Corrija o system prompt lá e copie o texto novo para o `agente.md`.
 Não precisa reimportar o workflow.
+
+O que já mudou (o porquê de cada um está no topo do `agente.md`):
+- **2026-11-09, listas com duas partes:** na lista que traz os SOBRESSALENTES CONTRATUAIS à esquerda
+  e os SOBRESSALENTES FORNECIDOS à direita, só o fornecido vira linha do controle, com o ITEM do item
+  contratual ao lado dele. Cole no AMP o System Prompt inteiro do `agente.md`.
