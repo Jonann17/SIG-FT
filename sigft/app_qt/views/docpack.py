@@ -112,6 +112,10 @@ class ModuloDocPack(ModuleFrame):
         self.listas: list[conferencia_svc.ListaNaMapeadora] = []
         # As pastas que já existem sob a raiz (`docpack_svc.arvore_existente`).
         self.existentes: dict = {}
+        # [2026-11-09] Para a IA: as listas vizinhas de cada lista (`docpack_svc.vizinhas_por_lista`)
+        # e o mapa de como as listas já estão organizadas (`docpack_svc.mapa_das_listas`).
+        self.vizinhas: dict = {}
+        self.mapa: list = []
         self._cancelado = threading.Event()
         super().__init__(parent, controller, titulo=t(TITULO), com_progresso=True, embutida=embutida,
                          console_externo=console_externo, progresso_externo=progresso_externo)
@@ -244,8 +248,9 @@ class ModuloDocPack(ModuleFrame):
             return []
         return docpack_svc.opcoes_do_nivel(self.existentes, self._destino_da_linha(item), NIVEL_DA_COLUNA[coluna])
 
-    def _mostrar_listas(self, listas, existentes) -> None:
+    def _mostrar_listas(self, listas, existentes, vizinhas=None, mapa=()) -> None:
         self.listas, self.existentes = list(listas), dict(existentes)
+        self.vizinhas, self.mapa = dict(vizinhas or {}), list(mapa)
         self.tabela.clear()
         for indice, lista in enumerate(self.listas):
             item = dialogos_selecao.linha_ttk(self.tabela, (lista.codigo, lista.descricao) + ("",) * len(EDITAVEIS),
@@ -293,10 +298,16 @@ class ModuloDocPack(ModuleFrame):
         except Exception as erro:  # noqa: BLE001 -- planilha do usuário
             self.log(f"[ERRO] Não consegui ler a mapeadora: {erro}")
             return
-        listas = docpack_svc.listas_sem_status_pmib(mapeadora, raiz)
+        # [2026-11-09] UM levantamento da raiz (no Box ele custa) para as duas coisas: as listas sem
+        # _STATUS_PMIB, e onde ficam os dossiês das outras, de onde saem as vizinhas e o mapa da IA.
+        levantamento = docpack_svc.levantar(raiz)
+        listas = docpack_svc.listas_sem_status_pmib(mapeadora, raiz, levantamento=levantamento)
+        pastas = docpack_svc.pastas_dos_dossies(raiz, levantamento)
+        vizinhas = docpack_svc.vizinhas_por_lista(listas, mapeadora.listas, pastas)
+        mapa = docpack_svc.mapa_das_listas(mapeadora.listas, pastas)
         existentes = docpack_svc.arvore_existente(raiz)
         self.log(f"{len(listas)} lista(s) sem _STATUS_PMIB, de {len(mapeadora.listas)} na mapeadora.")
-        interface.na_interface(self._mostrar_listas, listas, existentes)
+        interface.na_interface(self._mostrar_listas, listas, existentes, vizinhas, mapa)
 
     # -- a IA --------------------------------------------------------------
     def _sugerir(self) -> None:
@@ -320,7 +331,9 @@ class ModuloDocPack(ModuleFrame):
         self.log(f"Pedindo à IA a pasta de {len(indices)} lista(s)...")
         for indice in indices:
             lista = self.listas[indice]
-            destino, motivo = docpack_svc.sugerir_destino(lista, self.existentes, llm)
+            destino, motivo = docpack_svc.sugerir_destino(lista, self.existentes, llm,
+                                                          vizinhas=self.vizinhas.get(lista.codigo, ()),
+                                                          mapa=self.mapa)
             if destino is None:
                 self.log(f"  ⚠️ {lista.codigo}: {motivo}")
                 continue

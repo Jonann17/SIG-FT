@@ -171,7 +171,7 @@ def test_sugestao_da_ia_preenche_a_linha(qt_interface, qtbot, tmp_path, monkeypa
     tela.tabela.topLevelItem(1).setCheckState(0, Qt.CheckState.Checked)
     monkeypatch.setattr(tela, "_cliente_ia", lambda: object())
     monkeypatch.setattr(tela_mod.docpack_svc, "sugerir_destino",
-                        lambda lista, existentes, llm: (svc.Destino(et="03 - EBOP", capitulo="CAP 03",
+                        lambda lista, existentes, llm, **_kw: (svc.Destino(et="03 - EBOP", capitulo="CAP 03",
                                                                      subsistema="UPS"), "porque sim"))
     tela._sugerir()
     item = tela.tabela.topLevelItem(1)
@@ -186,8 +186,41 @@ def test_listar_le_a_mapeadora_e_mostra(qt_interface, qtbot, tmp_path, monkeypat
     tela.caminho_mapeadora = str(tmp_path / "m.xlsx")
     mapeadora = cr.Mapeadora(tmp_path / "m.xlsx", None, [_lista(CODIGO)])
     monkeypatch.setattr(tela_mod.conferencia_svc, "ler_mapeadora", lambda caminho: mapeadora)
-    monkeypatch.setattr(tela_mod.docpack_svc, "listas_sem_status_pmib", lambda m, raiz: m.listas)
+    monkeypatch.setattr(tela_mod.docpack_svc, "listas_sem_status_pmib", lambda m, raiz, **_kw: m.listas)
     monkeypatch.setattr(tela_mod.docpack_svc, "arvore_existente", lambda raiz: {"03 - EBOP": {}})
     tela._listar()
     assert tela.tabela.topLevelItemCount() == 1
     assert tela.existentes == {"03 - EBOP": {}}
+
+
+def test_listar_e_sugerir_levam_as_vizinhas_e_o_mapa_a_ia(qt_interface, qtbot, tmp_path, monkeypatch):
+    """2026-11-09: o Listar calcula as listas vizinhas e o mapa da organização, com UM levantamento da
+    raiz, e a sugestão da IA recebe os dois. Raiz de verdade: a lista A já tem dossiê."""
+    dossie = tmp_path / "03 - EBOP" / "SFC" / "SFC HF-01 e HF-02"
+    dossie.mkdir(parents=True)
+    (dossie / "#ST00=B01BMU10&EPB020_STATUS_PMIB.xlsx").write_bytes(b"x")
+    especificacao, capitulo = "SERVIÇOS AUXILIARES ELÉTRICOS", "CONVERSORES ESTÁTICOS DE FREQUÊNCIA"
+    a = cr.ListaNaMapeadora("#ST00=B01BMU10&EPB020", "1A", "", "", "1A", None, descricao="SFC 50 E 60 HZ",
+                            especificacao=especificacao, capitulo=capitulo)
+    b = cr.ListaNaMapeadora("#ST00=B01BMU10TA010&EPB020", "0", "", "", "0C", None, descricao="SFC THF",
+                            especificacao=especificacao, capitulo=capitulo)
+    tela = _tela(qtbot, tmp_path, monkeypatch)
+    _rodar_no_mesmo_fio(tela, monkeypatch)
+    tela.caminho_mapeadora = str(tmp_path / "m.xlsx")
+    monkeypatch.setattr(tela_mod.conferencia_svc, "ler_mapeadora",
+                        lambda caminho: cr.Mapeadora(tmp_path / "m.xlsx", None, [a, b]))
+    levantamentos = []
+    original = tela_mod.docpack_svc.levantar
+    monkeypatch.setattr(tela_mod.docpack_svc, "levantar", lambda raiz: levantamentos.append(raiz) or original(raiz))
+    tela._listar()
+    assert [lista.codigo for lista in tela.listas] == [b.codigo] and len(levantamentos) == 1
+
+    recebidos = []
+    monkeypatch.setattr(tela, "_cliente_ia", lambda: object())
+    monkeypatch.setattr(tela_mod.docpack_svc, "sugerir_destino",
+                        lambda lista, existentes, llm, **kw: recebidos.append(kw) or (None, "sem resposta"))
+    tela.tabela.topLevelItem(0).setCheckState(0, Qt.CheckState.Checked)
+    tela._sugerir()
+    (kw,) = recebidos
+    assert [(v.codigo, v.pasta) for v in kw["vizinhas"]] == [(a.codigo, "03 - EBOP/SFC/SFC HF-01 e HF-02")]
+    assert [(r.capitulo, r.pastas) for r in kw["mapa"]] == [(capitulo, (("03 - EBOP/SFC", 1),))]
