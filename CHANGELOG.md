@@ -56,6 +56,7 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 - DocPack: a tabela da **Etapa 2** ganha o botão **Abrir Pasta** de cada dossiê, o mesmo da Conferência de Revisões (ali estão o PDF, o _STATUS_PMIB e o HTML do AMP); a coluna com o nome da pasta passa a se chamar Dossiê.
 - DocPack: na Etapa 2, o **ITEM com ponto** é gravado como está na lista (`3.10`, `3.4`); antes `3.10` virava 3,1, que é outro item.
 - DocPack: o agente do AMP da Etapa 2 (o da Criação do _STATUS_PMIB) ganhou as regras das **listas com duas partes**: com os sobressalentes contratuais à esquerda e os fornecidos à direita, só os fornecidos viram material, com o ITEM do item contratual. A regra se cola no agente, no AMP: o texto está em `amp/criacao_status_pmib/agente.md`.
+- Revisão no AMP e DocPack (Etapa 2): o botão de copiar das tabelas do HTML do AMP passa a levar **só as linhas, sem o cabeçalho**, que é o mesmo da planilha. O cabeçalho continua na tabela, para ler. A regra se cola nos agentes, no AMP (`amp/revisao_de_listas/agente.md` e `amp/criacao_status_pmib/agente.md`).
 
 ## 1.3.2 - 2026-10-30
 

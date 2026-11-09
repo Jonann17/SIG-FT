@@ -18,6 +18,10 @@ pelo nó **AMP Agent**.
 > TOTAL, CÓDIGO DE MATERIAL, MARCA), e o agente devolvia as linhas da esquerda como materiais.
 > Entrou a seção "Listas com duas partes", e "uma linha por item da lista" virou "uma linha por
 > material". O SIG-FT guarda o ITEM com ponto como texto ("3.10" não vira 3,1).
+>
+> **2026-11-09: a cópia sem o cabeçalho** (pedido do Luan). O cabeçalho é o mesmo do template, e
+> colar ele de novo só atrapalha: o botão copia só as linhas dos itens. O cabeçalho continua na
+> tabela do HTML, porque o SIG-FT acha a tabela por ele (`docpack_etapa2.ler_tabela`).
 
 | Campo no AMP | Valor |
 |---|---|
@@ -84,7 +88,7 @@ Um único documento HTML, só o HTML, sem nada antes ou depois, nesta ordem:
 2. A linha de revisão.
 3. O controle, para copiar: a tabela a partir do cabeçalho do template até o último item, com exatamente as colunas do template. Mostre a página da lista de cada item numa primeira coluna à parte, que não vai na cópia.
 
-A tabela 3 tem um botão que copia a tabela como texto separado por tabulação, sem a coluna da página, para colar direto no Excel, na linha do cabeçalho do template.
+A tabela 3 tem um botão que copia só as linhas dos itens, abaixo do cabeçalho, como texto separado por tabulação e sem a coluna da página, para colar no Excel na primeira linha abaixo do cabeçalho do template. O cabeçalho é o mesmo do template: o cabeçalho continua na tabela, para ler, mas não vai na cópia.
 
 Escreva cada linha de cada tabela diretamente no HTML, com <tr> e <td>. Use JavaScript só para o botão de copiar, nunca para montar ou calcular dados das tabelas.
 A resposta começa em <!DOCTYPE html> e termina em </html>: não escreva o que está fazendo, nem antes nem depois.

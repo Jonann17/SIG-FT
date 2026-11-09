@@ -106,3 +106,11 @@ def test_o_pedido_saiu_e_o_agente_tem_copia():
     for termo in ("Spare Parts Document Reviewer", "A fonte é o AMP", "SEM_LISTA_STATUS_PMIB", "DOCUMENTAL",
                   "a conferir", "CRIAR", "EXCLUIR", "SUBSTITUIR", "<tr> e <td>"):
         assert termo in agente, termo
+
+
+def test_a_copia_leva_so_as_linhas_abaixo_do_cabecalho():
+    """2026-11-09 (pedido do Luan): o cabeçalho é o mesmo da planilha, e colar ele de novo só atrapalha.
+    Cada botão copia só as linhas abaixo do cabeçalho, que continua na tabela, para ler."""
+    agente = (PASTA / "agente.md").read_text(encoding="utf-8")
+    assert "copia só as linhas abaixo do cabeçalho" in agente
+    assert "Cada tabela tem um botão que copia a tabela como texto" not in agente

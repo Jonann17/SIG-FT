@@ -84,3 +84,5 @@ O que já mudou (o porquê de cada um está no topo do `agente.md`):
 - **2026-11-09, listas com duas partes:** na lista que traz os SOBRESSALENTES CONTRATUAIS à esquerda
   e os SOBRESSALENTES FORNECIDOS à direita, só o fornecido vira linha do controle, com o ITEM do item
   contratual ao lado dele. Cole no AMP o System Prompt inteiro do `agente.md`.
+- **2026-11-09, a cópia sem o cabeçalho:** o botão de copiar leva só as linhas dos itens; o
+  cabeçalho continua na tabela, porque o SIG-FT acha a tabela por ele.
