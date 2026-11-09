@@ -92,7 +92,8 @@ def test_procurar_mostra_os_dossies_vazios_todos_marcados(qt_interface, qtbot, t
     tela = _procurada(_tela(qtbot, tmp_path), qtbot)
     assert tela.tabela.topLevelItemCount() == 2
     assert [d.codigo for d in tela.marcados()] == [CODIGO, OUTRO]
-    assert tela.tabela.columnCount() == 3   # sem a coluna da lista com preço (2026-11-05)
+    # sem a coluna da lista com preço (2026-11-05); com o botão "Abrir Pasta" (2026-11-09)
+    assert tela.tabela.columnCount() == 4
     assert tela.tabela.topLevelItem(1).text(tela_mod.COL_SITUACAO) == "na fila"
     assert not tela.btn_gravar.isEnabled()
     qtbot.waitUntil(lambda: "aba faltando" in tela.console.toPlainText(), timeout=5000)
@@ -173,3 +174,16 @@ def test_embutida_usa_o_console_e_a_barra_da_secao(qt_interface, qtbot, tmp_path
                                         progresso_externo=barra)
     qtbot.addWidget(tela)
     assert tela.console is externo and tela.progress_bar is barra
+
+
+def test_cada_dossie_tem_o_botao_abrir_pasta(qt_interface, qtbot, tmp_path, servico, monkeypatch):
+    """Pedido do Luan (2026-11-09): da tabela da Etapa 2, ir direto à pasta do dossiê, onde ficam o
+    PDF, o _STATUS_PMIB e o HTML do AMP -- o mesmo botão da Conferência de Revisões."""
+    abertas = []
+    monkeypatch.setattr(tela_mod.plataforma, "abrir_no_sistema", abertas.append)
+    tela = _procurada(_tela(qtbot, tmp_path), qtbot)
+    assert tela.tabela.headerItem().text(tela_mod.COL_PASTA) == "Pasta"
+    botao = tela.tabela.itemWidget(tela.tabela.topLevelItem(1), tela_mod.COL_PASTA)
+    assert botao.text() == "Abrir Pasta"
+    botao.click()
+    assert abertas == [servico.dossies[1].pasta]

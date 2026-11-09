@@ -228,6 +228,15 @@ def _numero(valor):
     return int(numero) if numero.is_integer() else numero
 
 
+def _item(valor):
+    """O ITEM como está na lista: o número inteiro vira número (`12`), o resto fica como texto
+    (`3.10`, `3.4`). [2026-11-09] Na lista com o lado contratual e o fornecido, o ITEM das linhas
+    fornecidas é o número do item contratual, e `_numero` fazia de "3.10" o 3,1 -- outro item.
+    ITEM é rótulo, não quantidade."""
+    texto = str(valor if valor is not None else "").strip()
+    return int(texto) if texto.isascii() and texto.isdigit() else texto
+
+
 def _texto(valor) -> str:
     return "" if valor is None else " ".join(str(valor).split())
 
@@ -305,7 +314,7 @@ def materiais_da_tabela(linhas: list[dict[str, str]]) -> tuple[list[Material], l
             if any(dados.values()):   # a coluna da página, sozinha, não conta
                 sem_descricao += 1
             continue
-        item = _numero(dados["item"])
+        item = _item(dados["item"])
         materiais.append(Material(
             item=item if item != "" else len(materiais) + 1, qtd=_numero(dados["qtd"]), unid=dados["unid"],
             descricao=dados["descricao"], fabricante_modelo=dados["fabricante_modelo"],
