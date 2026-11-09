@@ -50,6 +50,9 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 - AutoSpec: a **corrente** (A, mA, kA) e a **tensão** (V, mV, kV) entram na conferência de unidade: `280 mA` no documento confere com `0,28 A` na ficha, e a conta aparece no console. Antes, a conversão certa era recusada e o campo ficava vazio. O "a" de "0 a 55 °C" continua sendo faixa, nunca ampere.
 - AutoSpec: o número do **modelo do item** (coluna MARCA/MODELO do _STATUS_PMIB) não conta mais como medida numa resposta deduzida: "sistema WAGO I/O 750" na aplicação e na função de um 750-362 deixa de esvaziar os dois campos. Medida deduzida (`750 W`, `250 módulos`) continua recusada.
 - AutoSpec: o console deixa de contar como "preenchidos por DEDUÇÃO" os campos que a IA devolveu vazios; eles ficam só na lista "a IA não respondeu". Estas mudanças não alteram o pedido à IA: rodar a mesma ficha de novo reaproveita a resposta guardada e só refaz a conferência.
+- DocPack: o **Sugerir com IA** da Etapa 1 passa a ver como as listas já estão organizadas: o mapa de cada especificação e capítulo da mapeadora até a pasta onde ficam os dossiês, e as listas vizinhas (a mesma especificação, já com pasta, com o título e a pasta de cada uma). Antes a IA via só os nomes das pastas, que não têm nada a ver com a mapeadora ("SERVIÇOS AUXILIARES ELÉTRICOS" mora em "03 - EBOP"). O motivo de cada sugestão diz qual vizinha ela seguiu, e o "Listar" lê a pasta raiz uma vez só.
+- DocPack: **uma pasta, um dossiê**. A Etapa 1 recusa criar o dossiê numa pasta que já tem o _STATUS_PMIB de outra lista ("cada lista tem a sua pasta"), venha o destino da IA ou digitado; antes as duas dividiam LMR, IMAGENS e DATASHEETS.
+- Upload Condições e DocPack (Etapa 1): o agente e o workflow do AMP para o **Workflow AMP** estão prontos no repositório, em `amp/ia_por_modulo/upload_condicoes/` e `amp/ia_por_modulo/docpack_estrutura/`, com o passo a passo.
 
 ## 1.3.2 - 2026-10-30
 

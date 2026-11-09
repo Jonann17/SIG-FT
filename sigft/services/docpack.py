@@ -89,11 +89,19 @@ def e_lista_sem_preco(lista: ListaNaMapeadora) -> bool:
     return bool(_PB020.search(lista.codigo.strip())) and "PRECO" not in _sem_acento(lista.descricao)
 
 
-def listas_sem_status_pmib(mapeadora: Mapeadora, raiz: str | Path | None) -> list[ListaNaMapeadora]:
+def levantar(raiz: str | Path | None):
+    """O levantamento dos `_STATUS_PMIB` da raiz, ou `None` sem raiz. Um por "Listar": ele percorre
+    a raiz inteira, e no Box isso custa (2026-11-09)."""
+    return status_pmib_arquivos.listar(raiz) if raiz else None
+
+
+def listas_sem_status_pmib(mapeadora: Mapeadora, raiz: str | Path | None, *,
+                           levantamento=None) -> list[ListaNaMapeadora]:
     """As listas sem LINK DA PLANILHA e sem `_STATUS_PMIB` vivo (pelo código) na raiz."""
     vivos = set()
     if raiz:
-        vivos = {codigo.strip().upper() for codigo, _ in status_pmib_arquivos.listar(raiz).vivos}
+        levantamento = levantamento or status_pmib_arquivos.listar(raiz)
+        vivos = {codigo.strip().upper() for codigo, _ in levantamento.vivos}
     return [lista for lista in mapeadora.listas
             if e_lista_sem_preco(lista) and not lista.link and lista.codigo.strip().upper() not in vivos]
 
@@ -247,6 +255,104 @@ def pastas_existentes(raiz: str | Path | None) -> dict:
 
 
 # --------------------------------------------------------------------------
+# As listas vizinhas (2026-11-09, pedido do Luan)
+# --------------------------------------------------------------------------
+# Os nomes das pastas não têm nada a ver com a mapeadora: a `#ST00=B01BMU10&EPB020` é, na
+# mapeadora, "SERVIÇOS AUXILIARES ELÉTRICOS" / "CONVERSORES ESTÁTICOS DE FREQUÊNCIA", e mora em
+# `03 - EBOP/SFC/SFC HF-01 e HF-02`. A IA aprende essa correspondência vendo onde estão as listas
+# da mesma especificação que já têm dossiê -- o que o levantamento da raiz já sabe.
+@dataclass(frozen=True)
+class Vizinha:
+    """Uma lista da mesma especificação que já tem dossiê, e a pasta dele."""
+    codigo: str
+    descricao: str
+    capitulo: str
+    pasta: str   # relativa à raiz, com "/"
+
+
+def pastas_dos_dossies(raiz: str | Path | None, levantamento=None) -> dict[str, str]:
+    """`{CÓDIGO: pasta do dossiê}` dos `_STATUS_PMIB` vivos, a pasta relativa à raiz e com "/"."""
+    if not raiz:
+        return {}
+    levantamento = levantamento or status_pmib_arquivos.listar(raiz)
+    pastas = {}
+    for codigo, caminho in levantamento.vivos:
+        try:
+            relativa = Path(caminho).parent.relative_to(Path(raiz))
+        except ValueError:
+            continue
+        pastas[codigo.strip().upper()] = relativa.as_posix()
+    return pastas
+
+
+def _ramo(capitulo: str) -> str:
+    """O primeiro nível do capítulo da mapeadora, que às vezes traz mais níveis:
+    `CONVERSORES ... / MECÂNICA / TROCADOR DE CALOR` -> `CONVERSORES ...`."""
+    return _sem_acento(str(capitulo or "").split("/")[0])
+
+
+def listas_vizinhas(lista: ListaNaMapeadora, listas: list[ListaNaMapeadora], pastas: dict[str, str],
+                    limite: int = 15) -> list[Vizinha]:
+    """As listas da mesma especificação que já têm dossiê: primeiro as do mesmo capítulo, depois as
+    do mesmo ramo (o primeiro nível do capítulo), depois as outras da especificação. Sem acento e
+    sem caixa na comparação; sem especificação, nenhuma."""
+    especificacao = _sem_acento(lista.especificacao)
+    if not especificacao:
+        return []
+    capitulo, ramo = _sem_acento(lista.capitulo), _ramo(lista.capitulo)
+    proprio = lista.codigo.strip().upper()
+    grupos: tuple[list, list, list] = ([], [], [])
+    for outra in listas:
+        codigo = outra.codigo.strip().upper()
+        if codigo == proprio or codigo not in pastas or _sem_acento(outra.especificacao) != especificacao:
+            continue
+        if capitulo and _sem_acento(outra.capitulo) == capitulo:
+            grupo = grupos[0]
+        elif ramo and _ramo(outra.capitulo) == ramo:
+            grupo = grupos[1]
+        else:
+            grupo = grupos[2]
+        grupo.append(Vizinha(outra.codigo.strip(), outra.descricao, outra.capitulo, pastas[codigo]))
+    return [vizinha for grupo in grupos for vizinha in grupo][:limite]
+
+
+def vizinhas_por_lista(listas: list[ListaNaMapeadora], todas: list[ListaNaMapeadora],
+                       pastas: dict[str, str]) -> dict[str, list[Vizinha]]:
+    """`{código: vizinhas}` de cada lista sem `_STATUS_PMIB`, para a sugestão da IA."""
+    return {lista.codigo: listas_vizinhas(lista, todas, pastas) for lista in listas}
+
+
+@dataclass(frozen=True)
+class RamoDoMapa:
+    """Uma especificação e um capítulo da mapeadora, e onde ficam os dossiês deles."""
+    especificacao: str
+    capitulo: str
+    pastas: tuple   # ((pasta-mãe, quantos dossiês), ...), a mais usada primeiro
+
+
+def mapa_das_listas(listas: list[ListaNaMapeadora], pastas: dict[str, str], limite: int = 150) -> list[RamoDoMapa]:
+    """Como as listas já estão organizadas: para cada especificação e capítulo da mapeadora (sem
+    acento e sem caixa), a pasta-mãe dos dossiês deles e quantos há em cada uma.
+
+    Vai à IA em toda sugestão (ideia do Luan, 2026-11-09: "toda vez mandar como estão estruturadas
+    as listas"): é a tabela de como a mapeadora vira pasta, e serve mesmo para a especificação que
+    ainda não tem lista vizinha."""
+    grupos: dict[tuple[str, str], list] = {}
+    for lista in listas:
+        codigo = lista.codigo.strip().upper()
+        if codigo not in pastas or not _sem_acento(lista.especificacao):
+            continue
+        chave = (_sem_acento(lista.especificacao), _sem_acento(lista.capitulo))
+        grupo = grupos.setdefault(chave, [lista.especificacao.strip(), lista.capitulo.strip(), {}])
+        mae = pastas[codigo].rsplit("/", 1)[0]
+        grupo[2][mae] = grupo[2].get(mae, 0) + 1
+    ramos = [RamoDoMapa(especificacao, capitulo,
+                        tuple(sorted(maes.items(), key=lambda par: (-par[1], par[0]))))
+             for _chave, (especificacao, capitulo, maes) in sorted(grupos.items())]
+    return ramos[:limite]
+
+
+# --------------------------------------------------------------------------
 # Templates
 # --------------------------------------------------------------------------
 @dataclass
@@ -297,6 +403,11 @@ def planejar(lista: ListaNaMapeadora, raiz: str | Path, destino: Destino, templa
     """O que `criar_dossie` faria, sem tocar no disco: as pastas e os arquivos, cada
     um dizendo se já existe. Levanta `ErroDocPack` para destino ou código inválido."""
     pasta = pasta_do_dossie(raiz, destino)
+    # [2026-11-09] Uma pasta, um dossiê (decisão do Luan): duas listas nunca dividem a pasta final.
+    # Dividindo, misturam LMR, IMAGENS e DATASHEETS, e a Aplicação LMR da segunda nem sai.
+    dono = _dono_da_pasta(pasta, lista.codigo)
+    if dono:
+        raise ErroDocPack(f"a pasta {pasta.name!r} já é o dossiê de {dono}: cada lista tem a sua pasta")
     passos = []
     # As pastas que faltam no caminho, a partir da raiz.
     atual = Path(raiz)
@@ -313,6 +424,23 @@ def planejar(lista: ListaNaMapeadora, raiz: str | Path, destino: Destino, templa
             raise ErroDocPack(f"o nome {nome.name!r} tem caractere que o Windows não aceita")
     passos.extend(Passo(a, "arquivo", a.exists()) for a in arquivos)
     return passos
+
+
+def _dono_da_pasta(pasta: Path, codigo: str) -> str | None:
+    """O código de OUTRA lista com `_STATUS_PMIB` nesta pasta, ou `None`. O arquivo de travamento
+    do Excel (`~$...`) não conta: é a própria lista aberta."""
+    try:
+        nomes = [p.name for p in pasta.iterdir() if p.is_file()]
+    except OSError:
+        return None
+    proprio = codigo.strip().upper()
+    for nome in nomes:
+        if nome.startswith(("~$", ".")):
+            continue
+        outro = status_pmib_arquivos.codigo_do_arquivo(nome)
+        if outro and outro.strip().upper() != proprio:
+            return outro
+    return None
 
 
 def _copiar(origem: str | Path, destino: Path) -> bool:
@@ -582,13 +710,31 @@ def _arvore_para_a_ia(arvore: dict) -> dict | list:
     return {nome: _arvore_para_a_ia(filhos) for nome, filhos in arvore.items()}
 
 
-def sugerir_destino(lista: ListaNaMapeadora, existentes: dict, llm) -> tuple[Destino | None, str]:
+def _vizinhas_para_a_ia(vizinhas) -> str:
+    """Uma lista vizinha por bloco: a pasta, o código com o capítulo da mapeadora, e o título."""
+    return "\n".join(f"- pasta: {v.pasta}\n  lista: {v.codigo} | capítulo na mapeadora: {v.capitulo}\n"
+                     f"  título: {v.descricao}" for v in vizinhas)
+
+
+def _mapa_para_a_ia(mapa) -> str:
+    """Uma linha por especificação e capítulo: `ESPEC | CAPÍTULO -> pasta (n listas)`."""
+    def onde(pastas):
+        return "; ".join(f"{mae} ({n} lista{'s' if n > 1 else ''})" for mae, n in pastas)
+    return "\n".join(f"- {r.especificacao} | {r.capitulo} -> {onde(r.pastas)}" for r in mapa)
+
+
+def sugerir_destino(lista: ListaNaMapeadora, existentes: dict, llm, *,
+                    vizinhas=(), mapa=()) -> tuple[Destino | None, str]:
     """(sugestão, motivo) da IA para onde vai o dossiê. Nunca levanta: falha vira
-    `(None, motivo da falha)`. A sugestão só preenche os campos; quem confirma é a pessoa."""
+    `(None, motivo da falha)`. A sugestão só preenche os campos; quem confirma é a pessoa.
+    2026-11-09: `vizinhas` são as listas da mesma especificação que já têm dossiê
+    (`listas_vizinhas`), e `mapa` é como todas as listas já estão organizadas
+    (`mapa_das_listas`): é deles que a IA tira como a mapeadora vira pasta."""
     prompt = prompts.montar_docpack_pasta(
         codigo=lista.codigo, titulo=lista.descricao, especificacao=lista.especificacao,
         capitulo=lista.capitulo, pastas_existentes=json.dumps(_arvore_para_a_ia(existentes), ensure_ascii=False,
-                                                              indent=1))
+                                                              indent=1),
+        listas_vizinhas=_vizinhas_para_a_ia(vizinhas), mapa=_mapa_para_a_ia(mapa))
     try:
         resposta = llm.generate(prompt, json_mode=True, tags={"modulo": "docpack", "tarefa": TAREFA_IA})
     except Exception as erro:  # noqa: BLE001 -- a IA é um atalho; sem ela, digita-se

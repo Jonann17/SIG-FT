@@ -240,3 +240,58 @@ def test_prepara_nao_mexe_na_barra_valida(tmp_path):
     saida = '{"c":"C:\\\\%x%","p":"95\\%","n":"a\\nb"}'
     resposta = _prepara(saida, tmp_path=tmp_path, modulo="autospec")
     assert json.loads(resposta["texto"]) == {"c": "C:\\%x%", "p": "95%", "n": "a\nb"}
+
+
+# -- Upload de Condições (2026-11-06, pedido do Luan) ------------------------------------------
+
+def test_upload_condicoes_tem_workflow_proprio():
+    """Uma chamada por ficha, a tarefa `condicoes`, sem documentos. A resposta é um OBJETO JSON:
+    o SIG-FT grava `res_json["pmib_codigo"]` logo depois (`ConditionsProcessor.processar_ia_lote`)."""
+    modulo = GERADOR.MODULOS["upload_condicoes"]
+    assert modulo["tarefas"] == ("condicoes",)
+    assert modulo["caminho"] == "sigft-ia-upload-condicoes"
+    assert modulo["sempre_json"] and not modulo["com_arquivos"]
+
+
+@SEM_NODE
+def test_upload_condicoes_o_objeto_volta_inteiro_com_o_porcento(tmp_path):
+    """A ficha de condições fala de umidade ("até 60 %"), e o agente do AMP escreve `\\%`: o nó do
+    workflow novo conserta e devolve o objeto inteiro, sem a narração de antes."""
+    saida = ('Segue o JSON da ficha.\n'
+             '{"pmib_codigo":"4500063671.9999",'
+             '"cuidado_pt":"Umidade relativa até 60\\% sem condensação",'
+             '"cuidado_es":"Humedad relativa hasta 60\\% sin condensación",'
+             '"perigoso_10004":"NÃO"}')
+    resposta = _prepara(saida, tarefa="condicoes", json_pedido="sim", tmp_path=tmp_path,
+                        modulo="upload_condicoes")
+    assert resposta["json_valido"] is True
+    assert json.loads(resposta["texto"]) == {
+        "pmib_codigo": "4500063671.9999",
+        "cuidado_pt": "Umidade relativa até 60% sem condensação",
+        "cuidado_es": "Humedad relativa hasta 60% sin condensación",
+        "perigoso_10004": "NÃO",
+    }
+
+
+# -- DocPack, Etapa 1: Estrutura (2026-11-09, pedido do Luan) --------------------------------------
+
+def test_docpack_estrutura_tem_workflow_proprio():
+    """Uma chamada por lista marcada no "Sugerir com IA", a tarefa `docpack_pasta`, sem documentos. A
+    resposta é um OBJETO JSON (`et`, `capitulo`, `sistema`, `subsistema`, `pasta`, `motivo`)."""
+    modulo = GERADOR.MODULOS["docpack_estrutura"]
+    assert modulo["tarefas"] == ("docpack_pasta",)
+    assert modulo["caminho"] == "sigft-ia-docpack-estrutura"
+    assert modulo["sempre_json"] and not modulo["com_arquivos"]
+
+
+@SEM_NODE
+def test_docpack_estrutura_o_objeto_volta_inteiro(tmp_path):
+    saida = ('A lista segue a vizinha do mesmo capítulo.\n'
+             '{"et":"03 - EBOP","capitulo":"SFC","sistema":"","subsistema":"SFC THF","pasta":"",'
+             '"motivo":"segui a #ST00=B01BMU10&EPB020, do mesmo capítulo"}')
+    resposta = _prepara(saida, tarefa="docpack_pasta", json_pedido="sim", tmp_path=tmp_path,
+                        modulo="docpack_estrutura")
+    assert resposta["json_valido"] is True
+    assert json.loads(resposta["texto"]) == {
+        "et": "03 - EBOP", "capitulo": "SFC", "sistema": "", "subsistema": "SFC THF", "pasta": "",
+        "motivo": "segui a #ST00=B01BMU10&EPB020, do mesmo capítulo"}

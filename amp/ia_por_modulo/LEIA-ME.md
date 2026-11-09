@@ -21,7 +21,12 @@ Módulos prontos:
 - **AutoSpec** (`autospec/`): leva os documentos ao agente; precisa de uma versão **depois da
   1.4.0-rc.2** (a que traz, nas novidades, "AutoSpec: pode rodar no Workflow AMP");
 - **Upload de Características** (`upload_caracteristicas/`): sem documentos; roda em qualquer versão
-  que tenha a IA por módulo (desde a 1.4.0-rc.1).
+  que tenha a IA por módulo (desde a 1.4.0-rc.1). Testado na GE em 2026-11-06;
+- **Upload de Condições** (`upload_condicoes/`): sem documentos, uma chamada por ficha; roda em
+  qualquer versão que tenha a IA por módulo (desde a 1.4.0-rc.1);
+- **Estrutura do DocPack** (`docpack_estrutura/`): o "Sugerir com IA" da Etapa 1, uma chamada por
+  lista marcada; roda em qualquer versão com a IA por módulo, mas o prompt que vê o mapa da
+  organização e as listas vizinhas chega **depois da 1.4.0-rc.6**.
 
 Um módulo por vez, cada um testado antes do seguinte (decisão do Luan, 2026-11-05).
 
@@ -197,6 +202,67 @@ no Workflow AMP mandaria só o texto e perderia as páginas escaneadas.
 2. No console, o erro de IA diz o que rodou: "Erro ao chamar IA (amp_workflow / workflow)".
 3. Compare com as mesmas fichas pela IA Externa, antes de subir ao portal.
 
+## Ligar o Upload de Condições (uma vez)
+
+1. **O agente, no AMP:** crie o **Spare Parts Conditions Normalizer** com o texto de
+   `upload_condicoes/agente.md`, como os outros (sem data source e sem *Add Optimized Query*).
+2. **O workflow, no n8n:** os mesmos passos do Cria Fichas, com
+   `upload_condicoes/workflow_upload_condicoes.json`: importe, crie a credencial `X-SIGFT-Chave`
+   com um valor **novo**, escolha o agente no nó **AMP Agent** com o **Timeout** no máximo, publique
+   e copie a **Production URL**, que termina em `/webhook/sigft-ia-upload-condicoes`.
+3. **No SIG-FT:** **Upload de Condições** (4.1. Upload Condições) → **Configurar IA** → **Workflow
+   AMP**, e preencha o endereço e a chave.
+
+### Como o Upload de Condições usa o workflow
+
+- Uma chamada por ficha, no botão do processamento por IA: o SIG-FT manda a instrução de sistema
+  (`SYSTEM_CONDICOES`, com a REGRA 0 de fidelidade ao fornecedor) e o prompt com os dados brutos da
+  ficha, e o workflow junta os dois na mensagem.
+- A resposta é um **objeto** JSON, com os textos em `_pt` e `_es`. O nó "Prepara a resposta"
+  conserta o `\%` e recorta o objeto da narração do agente.
+- Ficha que falha não para o lote: o console diz "Falha definitiva no PMIB ..." e segue.
+
+### Testar o Upload de Condições
+
+1. Duas ou três fichas, de preferência uma com campo em branco e uma com medidas sem unidade.
+2. Abra a planilha que o processamento grava (a que você escolhe ao salvar) e compare com as mesmas
+   fichas pela IA Externa, antes de subir ao portal: campo vazio vira "Não aplicável" /
+   "No aplicable", nenhuma norma ou lei aparece sem estar na ficha, e as medidas ficam em cm e kg.
+   A revisão antes do portal (`conferir_condicoes`) continua valendo, venha a resposta de onde vier.
+3. No console, o erro de IA diz o que rodou: "Erro ao chamar IA (amp_workflow / workflow)".
+
+## Ligar a Estrutura do DocPack (uma vez)
+
+1. **O agente, no AMP:** crie o **Spare Parts Folder Organizer** com o texto de
+   `docpack_estrutura/agente.md`, como os outros (sem data source e sem *Add Optimized Query*).
+2. **O workflow, no n8n:** os mesmos passos do Cria Fichas, com
+   `docpack_estrutura/workflow_docpack_estrutura.json`: importe, crie a credencial `X-SIGFT-Chave`
+   com um valor **novo**, escolha o agente no nó **AMP Agent** com o **Timeout** no máximo, publique
+   e copie a **Production URL**, que termina em `/webhook/sigft-ia-docpack-estrutura`.
+3. **No SIG-FT:** **8.2. DocPack** → **Configurar IA** → **Etapa 1: Estrutura** → **Workflow AMP**, e
+   preencha o endereço e a chave. A **Etapa 2: Conteúdo** é outro workflow (o da Criação do
+   `_STATUS_PMIB`): não mexa nela aqui.
+
+### Como a Estrutura do DocPack usa o workflow
+
+- No **Listar sem _STATUS_PMIB**, o SIG-FT lê a mapeadora e levanta a pasta raiz uma vez, e guarda
+  duas coisas para a IA: o **mapa** de como as listas já estão organizadas (especificação |
+  capítulo da mapeadora → a pasta onde ficam os dossiês delas) e, para cada lista, as **listas
+  vizinhas** (a mesma especificação, já com dossiê, com a pasta e o título de cada uma).
+- No **Sugerir com IA**, uma chamada por lista marcada, com o prompt de `montar_docpack_pasta`. A
+  resposta é um **objeto** JSON (`et`, `capitulo`, `sistema`, `subsistema`, `pasta`, `motivo`) e só
+  preenche os campos da linha: quem confere e cria é você.
+- Uma pasta é um dossiê (decisão do Luan, 2026-11-09): a criação recusa a pasta que já tem o
+  `_STATUS_PMIB` de outra lista, venha a sugestão da IA ou da mão.
+
+### Testar a Estrutura do DocPack
+
+1. Liste, marque duas ou três listas de uma especificação que já tem outras listas com pasta, e
+   clique **Sugerir com IA**.
+2. O motivo de cada sugestão (passe o mouse na coluna Subsistema) diz qual vizinha a IA seguiu.
+3. Compare com as mesmas listas pela IA Externa, e confira antes de criar: a ET e o capítulo
+   escritos como as pastas que já existem, e o dossiê numa pasta própria, ao lado das vizinhas.
+
 ## Atualizar o nó "Prepara a resposta"
 
 Cada módulo tem a sua versão do workflow (`"versao"` em `MODULOS`, no gerador):
@@ -206,6 +272,8 @@ Cada módulo tem a sua versão do workflow (`"versao"` em `MODULOS`, no gerador)
 | Cria Fichas | 2026-11-05 | o workflow validado na GE em 05/11. **Não muda** (decisão do Luan, 06/11): o teste `test_o_workflow_do_cria_fichas_e_o_validado_em_05_11` trava o JSON pelo hash |
 | AutoSpec | 2026-11-06 | o nó conserta o `\%` do agente e nunca devolve um pedaço do JSON |
 | Upload de Características | 2026-11-06 | nasceu com o código atual do nó |
+| Upload de Condições | 2026-11-06 | nasceu com o código atual do nó |
+| Estrutura do DocPack | 2026-11-06 | nasceu com o código atual do nó |
 
 O Cria Fichas segue com o recorte antigo: se um dia o agente escrever `\%` numa resposta dele, os
 itens daquele bloco chegam à revisão sem o PDM da IA (aparece na revisão; não passa em silêncio).

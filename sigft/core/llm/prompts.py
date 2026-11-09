@@ -1458,39 +1458,79 @@ O valor de "item" é o número do cabeçalho "### ITEM N" daquele item.
 """
 
 
-def montar_docpack_pasta(*, codigo, titulo, especificacao, capitulo, pastas_existentes):
+def montar_docpack_pasta(*, codigo, titulo, especificacao, capitulo, pastas_existentes, listas_vizinhas="",
+                         mapa=""):
     """DocPack: onde criar a pasta de uma lista de sobressalentes nova.
 
     [2026-11-04, pedido do Luan] As pastas seguem a hierarquia da ET: a primeira é a
     ET, dentro dela o capítulo, e no capítulo o sistema e o subsistema; a pasta final
-    é opcional. A IA vê as pastas que já existem (até quatro níveis) para preferir
-    uma delas a inventar outra; a resposta só preenche os campos da tela, e quem
-    confirma é a pessoa (`services/docpack.sugerir_destino`).
+    é opcional. A resposta só preenche os campos da tela, e quem confirma é a pessoa
+    (`services/docpack.sugerir_destino`).
+
+    [2026-11-09, pedido do Luan: "talvez ele não esteja muito bom"] Reescrito. A IA via só os
+    NOMES das pastas, e eles não têm nada a ver com a mapeadora: a `#ST00=B01BMU10&EPB020` é,
+    na mapeadora, "SERVIÇOS AUXILIARES ELÉTRICOS" / "CONVERSORES ESTÁTICOS DE FREQUÊNCIA", e
+    mora em `03 - EBOP/SFC/SFC HF-01 e HF-02`. Agora ela recebe as LISTAS VIZINHAS (mesma
+    especificação, já com dossiê, com a pasta de cada uma: `docpack.listas_vizinhas`), e as
+    regras dizem que o capítulo da mapeadora pode trazer mais níveis em " / ", que a pasta de
+    outra lista nunca é o dossiê desta (decisão do Luan: uma pasta, um dossiê), que pasta
+    existente vai escrita igual e o que tirar do título. E, ideia do Luan, vai TODA VEZ o MAPA de
+    como as listas já estão organizadas (`docpack.mapa_das_listas`): especificação e capítulo
+    da mapeadora -> a pasta onde ficam os dossiês, o que serve até para especificação sem
+    vizinha. O JSON da resposta é o mesmo.
     """
+    vizinhas = listas_vizinhas or "(nenhuma lista desta especificação tem pasta ainda)"
+    organizacao = mapa or "(nenhuma lista tem dossiê ainda)"
     return f"""Você organiza as pastas das listas de sobressalentes da modernização da usina de Itaipu.
-As pastas seguem a hierarquia da Especificação Técnica (ET):
+Cada lista tem um dossiê: uma pasta só dela, dentro da hierarquia da Especificação Técnica (ET):
 <ET>/<capítulo>/<sistema>/<subsistema>/<pasta final, opcional>
 - ET: a pasta de primeiro nível (ex.: "03 - EBOP", "05 - UNIDADE GERADORA").
 - capítulo: a pasta do capítulo da ET, dentro da ET.
 - sistema e subsistema: dentro do capítulo. Nem todo capítulo tem os dois níveis.
-- Os nomes vão em maiúsculas e sem acento (ex.: "SISTEMA DE EXCITACAO", "GERADOR DIESEL").
+- O dossiê é a última pasta do caminho.
 
-Diga onde criar a pasta desta lista:
+OS NOMES DAS PASTAS NÃO SÃO OS DA MAPEADORA. A mapeadora escreve a especificação e o capítulo por
+extenso; as pastas usam siglas e nomes curtos. Exemplo: na mapeadora, "SERVIÇOS AUXILIARES
+ELÉTRICOS" / "CONVERSORES ESTÁTICOS DE FREQUÊNCIA"; nas pastas, "03 - EBOP/SFC". Por isso as
+pistas são o mapa e as listas vizinhas abaixo: eles mostram como a mapeadora vira pasta.
+
+A LISTA
 - código: {codigo}
 - título: {titulo}
 - especificação técnica (na mapeadora): {especificacao}
 - capítulo (na mapeadora): {capitulo}
+O capítulo da mapeadora às vezes traz mais níveis, separados por " / " (ex.: "GRUPO GERADOR DIESEL /
+MECÂNICA / SISTEMA DE VENTILAÇÃO SALA DO GD"): o primeiro é o capítulo, e os outros apontam o
+sistema e o subsistema.
 
-As pastas que já existem (ET -> capítulo -> sistema -> subsistema):
+COMO AS LISTAS JÁ ESTÃO ORGANIZADAS (da mapeadora: especificação | capítulo -> a pasta onde ficam os
+dossiês delas, e quantos)
+{organizacao}
+
+AS LISTAS VIZINHAS (mesma especificação, já com dossiê; primeiro as do mesmo capítulo)
+{vizinhas}
+
+AS PASTAS QUE JÁ EXISTEM (ET -> capítulo -> sistema -> subsistema)
 {pastas_existentes}
 
-Regras:
-- "et": uma das pastas de primeiro nível acima, escrita igual. Só invente outra se nenhuma servir.
-- "capitulo", "sistema", "subsistema": prefira as pastas que já existem no nível certo, escritas igual. Um nível que não existe para esta lista fica como string vazia.
-- "subsistema": o subsistema a que a lista se refere, tirado do título.
-- "pasta": string vazia, a não ser que a lista precise de uma pasta própria dentro do subsistema.
-- Nenhum nome pode ter / \\ : * ? " < > |.
+REGRAS
+1. Siga as vizinhas do mesmo capítulo: use a ET, o capítulo e, quando servir, o sistema delas.
+   Sem vizinha do mesmo capítulo, procure no mapa a mesma especificação e o mesmo capítulo (ou o
+   mais parecido) e use a pasta dele; depois, as outras vizinhas e as pastas que já existem. Só
+   invente uma ET ou um capítulo se nada servir.
+2. A pasta de uma vizinha é o dossiê DELA: nunca a use como dossiê desta lista. Cada lista tem a
+   sua pasta, que nunca é o dossiê de outra lista. Quando esta lista fica junto de uma vizinha,
+   crie a pasta dela ao lado, no mesmo nível, com um nome que a distinga.
+3. O nome do dossiê ("subsistema", ou "pasta" quando ele fica um nível abaixo) é o que esta lista
+   tem de próprio, tirado do título. Deixe de fora o que se repete em todas as listas
+   ("ATUALIZAÇÃO TECNOLÓGICA", "PAT_OBJ1", "ENG. ...", "LISTA DE SOBRESSALENTES"), a
+   especificação e o capítulo, que já são os níveis de cima. Siga o estilo dos nomes das vizinhas.
+4. Pasta que já existe vai escrita igual, letra por letra, com as maiúsculas, as minúsculas e os
+   acentos dela. Pasta nova vai em maiúsculas e sem acento.
+5. Um nível que não se aplica fica como string vazia. "pasta" fica vazia, a não ser que o dossiê
+   precise de mais um nível abaixo do subsistema.
+6. Nenhum nome pode ter / \\ : * ? " < > |.
 
 Responda APENAS com o JSON, sem texto antes ou depois:
-{{"et": "...", "capitulo": "...", "sistema": "...", "subsistema": "...", "pasta": "", "motivo": "uma frase dizendo por quê"}}
+{{"et": "...", "capitulo": "...", "sistema": "...", "subsistema": "...", "pasta": "", "motivo": "uma frase dizendo por quê e qual vizinha você seguiu"}}
 """
