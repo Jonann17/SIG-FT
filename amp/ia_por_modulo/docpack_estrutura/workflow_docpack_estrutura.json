@@ -1,0 +1,325 @@
+{
+  "name": "SIG-FT · IA do DocPack: Estrutura (AMP)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## SIG-FT · IA do DocPack: Estrutura (AMP)\n**Ligar (uma vez):**\n1. **Webhook do SIG-FT** → *Credential for Header Auth* → *Create new*: Name `X-SIGFT-Chave`, Value um valor longo e aleatório, **diferente** do dos outros workflows.\n2. **AMP Agent** → escolha o agente *Spare Parts Folder Organizer* → *Add option* → **Timeout**: o máximo.\n3. Salve e **publique**.\n4. Copie a **Production URL** do webhook. No SIG-FT: DocPack (8.2. DocPack) → **Configurar IA** → *Etapa 1: Estrutura* → *Workflow AMP*, o endereço e a chave.\n\nO agente tem só um system prompt curto: as instruções da tarefa vêm do SIG-FT, no `prompt`.\nO pedido leva `modo` (`ia`), `tarefa`, `prompt`, `system` e `json`. O ping responde sem chamar o agente.\nPasso a passo: `amp/ia_por_modulo/LEIA-ME.md`, no repositório do SIG-FT.",
+        "height": 360,
+        "width": 680
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -340
+      ],
+      "id": "a6144730-a87f-5734-867b-15f6fe5d431a",
+      "name": "Como ligar"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "sigft-ia-docpack-estrutura",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        200
+      ],
+      "id": "9e1f4abe-e9a2-5a94-b442-17e29058caa8",
+      "name": "Webhook do SIG-FT",
+      "webhookId": "e4abbd00-ca52-58ad-99bd-b1067887168b"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "a6d2e3f5-3aeb-5cc6-bd20-bc062e7d88fe",
+              "leftValue": "={{ $json.body.modo }}",
+              "rightValue": "ping",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {
+          "looseTypeValidation": true
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        220,
+        200
+      ],
+      "id": "b0419116-1e00-5a67-91ad-18fd900f65e5",
+      "name": "É ping?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, modo: 'ping', versao_workflow: '2026-11-06', execucao: $execution.id }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        460,
+        40
+      ],
+      "id": "77bed9b0-b90c-55c5-a207-e65e4c7a13f3",
+      "name": "Responde ping"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "43ca2718-863d-5def-b169-365e889214fc",
+              "name": "chatInput",
+              "value": "={{ [$json.body.system, $json.body.prompt].filter(t => t && String(t).trim()).join('\\n\\n') }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        460,
+        300
+      ],
+      "id": "710c6a10-f5d7-5831-9b2a-f052877b8180",
+      "name": "Monta a mensagem"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "a94336f0-6ce0-587d-87c8-aca29c5870f0",
+              "leftValue": "={{ $json.chatInput }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {
+          "looseTypeValidation": true
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        700,
+        300
+      ],
+      "id": "fd86dc54-0336-57ae-9424-d668581e26c0",
+      "name": "Chegou o prompt?"
+    },
+    {
+      "parameters": {
+        "agentId": {
+          "__rl": true,
+          "value": "{\"agentName\":\"Spare Parts Folder Organizer\",\"model\":\"bedrock-claude-sonnet-5.5\"}",
+          "mode": "list",
+          "cachedResultName": "Spare Parts Folder Organizer"
+        },
+        "options": {}
+      },
+      "type": "CUSTOM.amp",
+      "typeVersion": 1,
+      "position": [
+        940,
+        200
+      ],
+      "id": "5b9843bc-cdd7-5cc6-8db8-3ac361c48a33",
+      "name": "AMP Agent",
+      "credentials": {
+        "ampOAuth2Api": {
+          "id": "2GcgH0WxCkNN6bg4",
+          "name": "AMP account 1859"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: false, modo: 'ia', etapa: 'prompt', erro: 'o pedido chegou sem prompt', versao_workflow: '2026-11-06', execucao: $execution.id }) }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        940,
+        440
+      ],
+      "id": "9d3739e0-4c69-5c24-899e-7febe6aa8bff",
+      "name": "Responde sem prompt"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepara a resposta ao SIG-FT. As instrucoes da tarefa vem do SIG-FT, no prompt.\nconst VERSAO = '2026-11-06';\nconst SEMPRE_JSON = true;\nconst pedido = $('Webhook do SIG-FT').first().json.body || {};\nconst tarefa = String(pedido.tarefa || '');\nconst querJson = SEMPRE_JSON || String(pedido.json || '') === 'sim';\nconst bruto = String($input.first().json.output ?? '').trim();\n\n// O agente escreve \"\\%\" dentro do JSON (como no HTML da revisao das listas), e o JSON so\n// aceita \\\" \\\\ \\/ \\b \\f \\n \\r \\t \\u: a barra antes de outro caractere sai.\nfunction consertaEscapes(trecho) {\n  return trecho.replace(/\\\\([\\s\\S])/g, (par, c) => ('\"\\\\/bfnrtu'.includes(c) ? par : c));\n}\n\n// Onde fecha o bloco que abre em i ({ ou [), contando as chaves fora das strings; -1 se\n// ele nao fecha (resposta cortada) ou fecha com o sinal trocado.\nfunction fimDoBloco(t, i) {\n  const pilha = [];\n  let emString = false, escape = false;\n  for (let j = i; j < t.length; j++) {\n    const d = t[j];\n    if (emString) {\n      if (escape) escape = false;\n      else if (d === '\\\\') escape = true;\n      else if (d === '\"') emString = false;\n      continue;\n    }\n    if (d === '\"') emString = true;\n    else if (d === '{' || d === '[') pilha.push(d === '{' ? '}' : ']');\n    else if (d === '}' || d === ']') {\n      if (pilha.pop() !== d) return -1;\n      if (pilha.length === 0) return j;\n    }\n  }\n  return -1;\n}\n\nfunction leJson(trecho) {\n  for (const versao of [trecho, consertaEscapes(trecho)]) {\n    try { JSON.parse(versao); return versao; } catch (e) { /* tenta o conserto */ }\n  }\n  return null;\n}\n\n// O JSON do meio da resposta: o primeiro bloco { } ou [ ] DE FORA que e JSON, inteiro. O\n// agente as vezes narra antes (\"Vou analisar os itens [1 a 15]...\") ou poe ```json em\n// volta. Um bloco que nao e JSON e pulado INTEIRO, sem olhar dentro: em 06/11 o objeto do\n// primeiro campo saiu no lugar da ficha. Um bloco que nao fecha encerra a busca.\nfunction recortaJson(texto) {\n  const t = texto.replace(/```(?:json)?/gi, '');\n  for (let i = 0; i < t.length; i++) {\n    if (t[i] !== '{' && t[i] !== '[') continue;\n    const fim = fimDoBloco(t, i);\n    if (fim < 0) return null;\n    const lido = leJson(t.slice(i, fim + 1));\n    if (lido !== null) return lido;\n    i = fim;\n  }\n  return null;\n}\n\nlet texto = bruto;\nlet json_valido = null;\nif (querJson && bruto) {\n  const recorte = recortaJson(bruto);\n  json_valido = recorte !== null;\n  if (recorte !== null) texto = recorte;   // sem JSON valido, vai o texto todo: o SIG-FT tenta ler\n}\nconst ok = texto.length > 0;\nconst resposta = { ok, modo: 'ia', tarefa, texto, json_valido, caracteres_do_agente: bruto.length,\n                   versao_workflow: VERSAO, execucao: $execution.id };\nconst binarios = $('Monta a mensagem').first().binary || {};\nresposta.arquivos = Object.values(binarios).map(b => b.fileName || '?');\nresposta.arquivos_recebidos = resposta.arquivos.length;\nif (!ok) { resposta.etapa = 'agente'; resposta.erro = 'o agente respondeu vazio'; }\nreturn [{ json: { resposta } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1180,
+        120
+      ],
+      "id": "b2ddbc94-708a-52d4-9bd5-a38fd8717b4a",
+      "name": "Prepara a resposta"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json.resposta) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1420,
+        120
+      ],
+      "id": "abd86c42-4528-53a0-b053-2b90002080d3",
+      "name": "Responde"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: false, modo: 'ia', etapa: 'agente', erro: String(($json.error && ($json.error.message || $json.error)) || 'erro sem mensagem'), versao_workflow: '2026-11-06', execucao: $execution.id }) }}",
+        "options": {
+          "responseCode": 502
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1180,
+        320
+      ],
+      "id": "965db196-b6b5-544e-9110-be779fe30298",
+      "name": "Responde erro"
+    }
+  ],
+  "connections": {
+    "Webhook do SIG-FT": {
+      "main": [
+        [
+          {
+            "node": "É ping?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "É ping?": {
+      "main": [
+        [
+          {
+            "node": "Responde ping",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Monta a mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Monta a mensagem": {
+      "main": [
+        [
+          {
+            "node": "Chegou o prompt?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chegou o prompt?": {
+      "main": [
+        [
+          {
+            "node": "AMP Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responde sem prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AMP Agent": {
+      "main": [
+        [
+          {
+            "node": "Prepara a resposta",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responde erro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepara a resposta": {
+      "main": [
+        [
+          {
+            "node": "Responde",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

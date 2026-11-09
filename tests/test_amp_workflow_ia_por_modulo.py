@@ -271,3 +271,27 @@ def test_upload_condicoes_o_objeto_volta_inteiro_com_o_porcento(tmp_path):
         "cuidado_es": "Humedad relativa hasta 60% sin condensación",
         "perigoso_10004": "NÃO",
     }
+
+
+# -- DocPack, Etapa 1: Estrutura (2026-11-09, pedido do Luan) --------------------------------------
+
+def test_docpack_estrutura_tem_workflow_proprio():
+    """Uma chamada por lista marcada no "Sugerir com IA", a tarefa `docpack_pasta`, sem documentos. A
+    resposta é um OBJETO JSON (`et`, `capitulo`, `sistema`, `subsistema`, `pasta`, `motivo`)."""
+    modulo = GERADOR.MODULOS["docpack_estrutura"]
+    assert modulo["tarefas"] == ("docpack_pasta",)
+    assert modulo["caminho"] == "sigft-ia-docpack-estrutura"
+    assert modulo["sempre_json"] and not modulo["com_arquivos"]
+
+
+@SEM_NODE
+def test_docpack_estrutura_o_objeto_volta_inteiro(tmp_path):
+    saida = ('A lista segue a vizinha do mesmo capítulo.\n'
+             '{"et":"03 - EBOP","capitulo":"SFC","sistema":"","subsistema":"SFC THF","pasta":"",'
+             '"motivo":"segui a #ST00=B01BMU10&EPB020, do mesmo capítulo"}')
+    resposta = _prepara(saida, tarefa="docpack_pasta", json_pedido="sim", tmp_path=tmp_path,
+                        modulo="docpack_estrutura")
+    assert resposta["json_valido"] is True
+    assert json.loads(resposta["texto"]) == {
+        "et": "03 - EBOP", "capitulo": "SFC", "sistema": "", "subsistema": "SFC THF", "pasta": "",
+        "motivo": "segui a #ST00=B01BMU10&EPB020, do mesmo capítulo"}

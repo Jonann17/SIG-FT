@@ -89,6 +89,18 @@ MODULOS = {
         "sempre_json": True,
         "com_arquivos": False,
     },
+    # 2026-11-09 (pedido do Luan): a Etapa 1 do DocPack, o "Sugerir com IA": uma chamada por lista
+    # marcada, a tarefa `docpack_pasta`, que responde um OBJETO JSON. A Etapa 2 (`docpack_conteudo`)
+    # já tem o workflow dela, o da Criação do _STATUS_PMIB (`amp/criacao_status_pmib/`).
+    "docpack_estrutura": {
+        "titulo": "DocPack: Estrutura",
+        "caminho": "sigft-ia-docpack-estrutura",
+        "agente": "Spare Parts Folder Organizer",
+        "tarefas": ("docpack_pasta",),
+        "onde": "DocPack (8.2. DocPack) → **Configurar IA** → *Etapa 1: Estrutura*",
+        "sempre_json": True,
+        "com_arquivos": False,
+    },
 }
 
 WEBHOOK = "Webhook do SIG-FT"

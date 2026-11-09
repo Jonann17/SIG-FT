@@ -23,7 +23,10 @@ Módulos prontos:
 - **Upload de Características** (`upload_caracteristicas/`): sem documentos; roda em qualquer versão
   que tenha a IA por módulo (desde a 1.4.0-rc.1). Testado na GE em 2026-11-06;
 - **Upload de Condições** (`upload_condicoes/`): sem documentos, uma chamada por ficha; roda em
-  qualquer versão que tenha a IA por módulo (desde a 1.4.0-rc.1).
+  qualquer versão que tenha a IA por módulo (desde a 1.4.0-rc.1);
+- **Estrutura do DocPack** (`docpack_estrutura/`): o "Sugerir com IA" da Etapa 1, uma chamada por
+  lista marcada; roda em qualquer versão com a IA por módulo, mas o prompt que vê o mapa da
+  organização e as listas vizinhas chega **depois da 1.4.0-rc.6**.
 
 Um módulo por vez, cada um testado antes do seguinte (decisão do Luan, 2026-11-05).
 
@@ -228,6 +231,38 @@ no Workflow AMP mandaria só o texto e perderia as páginas escaneadas.
    A revisão antes do portal (`conferir_condicoes`) continua valendo, venha a resposta de onde vier.
 3. No console, o erro de IA diz o que rodou: "Erro ao chamar IA (amp_workflow / workflow)".
 
+## Ligar a Estrutura do DocPack (uma vez)
+
+1. **O agente, no AMP:** crie o **Spare Parts Folder Organizer** com o texto de
+   `docpack_estrutura/agente.md`, como os outros (sem data source e sem *Add Optimized Query*).
+2. **O workflow, no n8n:** os mesmos passos do Cria Fichas, com
+   `docpack_estrutura/workflow_docpack_estrutura.json`: importe, crie a credencial `X-SIGFT-Chave`
+   com um valor **novo**, escolha o agente no nó **AMP Agent** com o **Timeout** no máximo, publique
+   e copie a **Production URL**, que termina em `/webhook/sigft-ia-docpack-estrutura`.
+3. **No SIG-FT:** **8.2. DocPack** → **Configurar IA** → **Etapa 1: Estrutura** → **Workflow AMP**, e
+   preencha o endereço e a chave. A **Etapa 2: Conteúdo** é outro workflow (o da Criação do
+   `_STATUS_PMIB`): não mexa nela aqui.
+
+### Como a Estrutura do DocPack usa o workflow
+
+- No **Listar sem _STATUS_PMIB**, o SIG-FT lê a mapeadora e levanta a pasta raiz uma vez, e guarda
+  duas coisas para a IA: o **mapa** de como as listas já estão organizadas (especificação |
+  capítulo da mapeadora → a pasta onde ficam os dossiês delas) e, para cada lista, as **listas
+  vizinhas** (a mesma especificação, já com dossiê, com a pasta e o título de cada uma).
+- No **Sugerir com IA**, uma chamada por lista marcada, com o prompt de `montar_docpack_pasta`. A
+  resposta é um **objeto** JSON (`et`, `capitulo`, `sistema`, `subsistema`, `pasta`, `motivo`) e só
+  preenche os campos da linha: quem confere e cria é você.
+- Uma pasta é um dossiê (decisão do Luan, 2026-11-09): a criação recusa a pasta que já tem o
+  `_STATUS_PMIB` de outra lista, venha a sugestão da IA ou da mão.
+
+### Testar a Estrutura do DocPack
+
+1. Liste, marque duas ou três listas de uma especificação que já tem outras listas com pasta, e
+   clique **Sugerir com IA**.
+2. O motivo de cada sugestão (passe o mouse na coluna Subsistema) diz qual vizinha a IA seguiu.
+3. Compare com as mesmas listas pela IA Externa, e confira antes de criar: a ET e o capítulo
+   escritos como as pastas que já existem, e o dossiê numa pasta própria, ao lado das vizinhas.
+
 ## Atualizar o nó "Prepara a resposta"
 
 Cada módulo tem a sua versão do workflow (`"versao"` em `MODULOS`, no gerador):
@@ -238,6 +273,7 @@ Cada módulo tem a sua versão do workflow (`"versao"` em `MODULOS`, no gerador)
 | AutoSpec | 2026-11-06 | o nó conserta o `\%` do agente e nunca devolve um pedaço do JSON |
 | Upload de Características | 2026-11-06 | nasceu com o código atual do nó |
 | Upload de Condições | 2026-11-06 | nasceu com o código atual do nó |
+| Estrutura do DocPack | 2026-11-06 | nasceu com o código atual do nó |
 
 O Cria Fichas segue com o recorte antigo: se um dia o agente escrever `\%` numa resposta dele, os
 itens daquele bloco chegam à revisão sem o PDM da IA (aparece na revisão; não passa em silêncio).
