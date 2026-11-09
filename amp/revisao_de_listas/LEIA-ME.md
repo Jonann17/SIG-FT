@@ -101,6 +101,11 @@ andamento da equipe apagado):
 
 Não precisa reimportar o workflow: ele só chama o agente.
 
+O que já mudou (o porquê está no topo do `agente.md`):
+- **2026-11-09, a cópia sem o cabeçalho:** cada botão de copiar leva só as linhas abaixo do
+  cabeçalho, que é o mesmo da planilha. No AMP, troque só a frase "Cada tabela tem um botão que
+  copia..." pela do `agente.md`.
+
 ## Resgatar um HTML que não chegou ao SIG-FT
 
 Se o SIG-FT fechou no meio, ou desistiu antes da resposta (ele espera até 45 min), o resultado fica

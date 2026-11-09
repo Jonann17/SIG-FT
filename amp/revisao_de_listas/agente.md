@@ -11,6 +11,10 @@ pelo nó **AMP Agent**.
 > **Cópia de 2026-11-03.** O system prompt foi colado pelo Luan do AMP, como estava naquele dia.
 > A descrição e o goal são os combinados na criação do agente e não foram conferidos contra o AMP.
 > Desenho: `docs/superpowers/specs/2026-11-03-amp-revisao-com-arquivos-design.md`, §3.
+>
+> **2026-11-09: a cópia sem o cabeçalho** (pedido do Luan). O cabeçalho é o mesmo da planilha, e
+> colar ele de novo só atrapalha: cada botão copia só as linhas abaixo do cabeçalho, que continua
+> na tabela, para ler. Só essa frase do System Prompt mudou.
 
 | Campo no AMP | Valor |
 |---|---|
@@ -72,7 +76,7 @@ Um único documento HTML, só o HTML, sem nada antes ou depois, com:
 4. As linhas que vão para a SEM_LISTA_STATUS_PMIB, com as mesmas colunas da _STATUS_PMIB e a OBSERVAÇÃO preenchida.
 5. A linha de revisão nova.
 
-Cada tabela tem um botão que copia a tabela como texto separado por tabulação, para colar direto no Excel.
+Cada tabela tem um botão que copia só as linhas abaixo do cabeçalho, como texto separado por tabulação, para colar no Excel abaixo do cabeçalho que a planilha já tem. O cabeçalho continua na tabela, para ler, mas não vai na cópia.
 
 Escreva cada linha de cada tabela diretamente no HTML, com <tr> e <td>. Use JavaScript só para o botão de copiar, nunca para montar ou calcular dados das tabelas.
 A resposta começa em <!DOCTYPE html> e termina em </html>: não escreva o que está fazendo, nem antes nem depois.

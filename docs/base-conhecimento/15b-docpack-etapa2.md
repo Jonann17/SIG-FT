@@ -52,6 +52,15 @@ lista de materiais do `_STATUS_PMIB` a partir do PDF da lista. Ela é feita pelo
   - TIPO DE ENTREGA.
 
   As colunas de andamento da equipe e as fórmulas do template não são tocadas.
+- **ITEM é rótulo, não quantidade** (2026-11-09). Só o número inteiro vira número; o resto fica
+  como está na lista (`3.10`, `3.4`). Antes, `"3.10"` virava 3,1, que é outro item.
+- **Listas com duas partes** (2026-11-09, pedido do Luan). Algumas listas trazem à esquerda os
+  SOBRESSALENTES CONTRATUAIS (o que a ET pediu) e à direita os SOBRESSALENTES FORNECIDOS (o que se
+  entrega). Só o fornecido vira material; o ITEM de cada linha fornecida é o do item contratual
+  ao lado dela, e a quantidade é a da direita. A regra é do agente, no AMP
+  (`amp/criacao_status_pmib/agente.md`, seção "Listas com duas partes"): o SIG-FT só lê a tabela.
+- **Abrir Pasta** (2026-11-09). Cada dossiê da tabela tem o botão da Conferência de Revisões
+  (`dialogos_selecao.botao_de_pasta`), que abre a pasta do PDF, do `_STATUS_PMIB` e do HTML do AMP.
 - **Preço nunca se inventa.** Uma coluna com cara de preço na tabela do agente é ignorada, com aviso, e o VALOR UNITÁRIO fica vazio.
 - **Planilha já preenchida.** Se o `_STATUS_PMIB` já tem material, a gravação é recusada.
 - **Cabeçalho.** É achado pelo texto, nas 15 primeiras linhas (o do `_STATUS_PMIB` está na linha 5).

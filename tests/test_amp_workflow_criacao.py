@@ -65,3 +65,24 @@ def test_o_agente_tem_copia():
     for termo in ("Spare Parts Control Sheet Builder", "A fonte é o AMP", "nem uma a mais, nem uma a menos",
                   "a conferir", "<tr> e <td>", "colunas de andamento da equipe"):
         assert termo in agente, termo
+
+
+def test_o_agente_le_so_o_lado_fornecido_das_listas_com_duas_partes():
+    """2026-11-09 (pedido do Luan, pelo DocPack Etapa 2): na lista com SOBRESSALENTES CONTRATUAIS à
+    esquerda e SOBRESSALENTES FORNECIDOS à direita, só o fornecido vira linha do controle, e o ITEM é
+    o do item contratual. Guarda da cópia: é o texto que vai para o AMP."""
+    agente = (PASTA / "agente.md").read_text(encoding="utf-8")
+    for termo in ("SOBRESSALENTES CONTRATUAIS", "SOBRESSALENTES FORNECIDOS", "O lado contratual nunca vira linha",
+                  "o número desse item contratual", "nunca as da esquerda", "Não aplicado",
+                  "uma linha por material da lista"):
+        assert termo in agente, termo
+
+
+def test_a_copia_leva_so_as_linhas_abaixo_do_cabecalho():
+    """2026-11-09 (pedido do Luan): o cabeçalho é o mesmo do template, e colar ele de novo só atrapalha.
+    O botão copia só as linhas dos itens; o cabeçalho continua na tabela, porque o SIG-FT (DocPack Etapa
+    2, `docpack_etapa2.ler_tabela`) acha a tabela por ele."""
+    agente = (PASTA / "agente.md").read_text(encoding="utf-8")
+    assert "copia só as linhas dos itens" in agente
+    assert "o cabeçalho continua na tabela" in agente
+    assert "na linha do cabeçalho do template" not in agente

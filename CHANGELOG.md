@@ -53,6 +53,10 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 - DocPack: o **Sugerir com IA** da Etapa 1 passa a ver como as listas já estão organizadas: o mapa de cada especificação e capítulo da mapeadora até a pasta onde ficam os dossiês, e as listas vizinhas (a mesma especificação, já com pasta, com o título e a pasta de cada uma). Antes a IA via só os nomes das pastas, que não têm nada a ver com a mapeadora ("SERVIÇOS AUXILIARES ELÉTRICOS" mora em "03 - EBOP"). O motivo de cada sugestão diz qual vizinha ela seguiu, e o "Listar" lê a pasta raiz uma vez só.
 - DocPack: **uma pasta, um dossiê**. A Etapa 1 recusa criar o dossiê numa pasta que já tem o _STATUS_PMIB de outra lista ("cada lista tem a sua pasta"), venha o destino da IA ou digitado; antes as duas dividiam LMR, IMAGENS e DATASHEETS.
 - Upload Condições e DocPack (Etapa 1): o agente e o workflow do AMP para o **Workflow AMP** estão prontos no repositório, em `amp/ia_por_modulo/upload_condicoes/` e `amp/ia_por_modulo/docpack_estrutura/`, com o passo a passo.
+- DocPack: a tabela da **Etapa 2** ganha o botão **Abrir Pasta** de cada dossiê, o mesmo da Conferência de Revisões (ali estão o PDF, o _STATUS_PMIB e o HTML do AMP); a coluna com o nome da pasta passa a se chamar Dossiê.
+- DocPack: na Etapa 2, o **ITEM com ponto** é gravado como está na lista (`3.10`, `3.4`); antes `3.10` virava 3,1, que é outro item.
+- DocPack: o agente do AMP da Etapa 2 (o da Criação do _STATUS_PMIB) ganhou as regras das **listas com duas partes**: com os sobressalentes contratuais à esquerda e os fornecidos à direita, só os fornecidos viram material, com o ITEM do item contratual. A regra se cola no agente, no AMP: o texto está em `amp/criacao_status_pmib/agente.md`.
+- Revisão no AMP e DocPack (Etapa 2): o botão de copiar das tabelas do HTML do AMP passa a levar **só as linhas, sem o cabeçalho**, que é o mesmo da planilha. O cabeçalho continua na tabela, para ler. A regra se cola nos agentes, no AMP (`amp/revisao_de_listas/agente.md` e `amp/criacao_status_pmib/agente.md`).
 
 ## 1.3.2 - 2026-10-30
 

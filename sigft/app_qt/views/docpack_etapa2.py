@@ -22,7 +22,7 @@ from sigft.app_qt.views.conferencia_revisoes import perfil_do_aconex
 from sigft.app_qt.widgets.ia_do_modulo import avisos as avisos_da_ia, chaves_do_webhook_so
 from sigft.app_qt.widgets import blocos, controles, dialogos_selecao, webhook_amp
 from sigft.app_qt.widgets.module_frame import ModuleFrame
-from sigft.core import prefs
+from sigft.core import plataforma, prefs
 from sigft.core.aconex.cliente import ClienteAconex
 from sigft.core.amp.cliente import ClienteAmp
 from sigft.services import docpack_etapa2 as etapa2_svc
@@ -55,11 +55,15 @@ GRAVADO = marcar("gravado")
 
 # Os nomes vão em `marcar` e são traduzidos onde a tabela é montada. As larguras somam 850.
 COLUNAS = (
-    (marcar("Código"), 240),
-    (marcar("Pasta"), 290),
-    (marcar("Situação"), 320),
+    (marcar("Código"), 220),
+    (marcar("Dossiê"), 250),
+    (marcar("Situação"), 290),
+    # [2026-11-09, pedido do Luan] O botão "Abrir Pasta" do dossiê, o mesmo da Conferência de
+    # Revisões (`dialogos_selecao.botao_de_pasta`): ali estão o PDF, o _STATUS_PMIB e o HTML do AMP.
+    (marcar("Pasta"), 90),
 )
 COL_SITUACAO = 2
+COL_PASTA = 3
 
 
 def _linha(*widgets) -> QHBoxLayout:
@@ -207,8 +211,15 @@ class ModuloDocPackEtapa2(ModuleFrame):
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(0, Qt.CheckState.Checked)
             item.setToolTip(1, str(dossie.pasta))
+            dialogos_selecao.botao_de_pasta(self.tabela, item, COL_PASTA, dossie.pasta, self._abrir_pasta)
         dialogos_selecao.ajustar_ao_conteudo(self.tabela)
         self.lbl_totais.setText(t("{n} dossiê(s) vazio(s)", n=len(self.dossies)))
+
+    def _abrir_pasta(self, pasta) -> None:
+        try:
+            plataforma.abrir_no_sistema(pasta)
+        except OSError as erro:
+            self.log(f"[AVISO] Não consegui abrir a pasta {pasta}: {erro}")
 
     def marcados(self) -> list[etapa2_svc.Dossie]:
         escolhidos = []

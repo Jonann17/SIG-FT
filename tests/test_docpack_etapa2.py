@@ -295,3 +295,15 @@ def test_o_resumo_da_confirmacao(tmp_path):
 @pytest.mark.parametrize("valor,esperado", [("2", 2), ("2,5", 2.5), (3.0, 3), ("1 jogo", "1 jogo"), (None, "")])
 def test_quantidade(valor, esperado):
     assert e2._numero(valor) == esperado
+
+
+def test_o_item_com_ponto_fica_como_esta_na_lista():
+    """Lista com o lado contratual e o fornecido (pedido do Luan, 2026-11-09): o ITEM das linhas
+    fornecidas é o número do item contratual, e "3.10" não pode virar 3.1 -- que é outro item.
+    ITEM é rótulo, não quantidade: só o número inteiro vira número."""
+    materiais, _avisos = e2.materiais_da_tabela([
+        {"ITEM": "3.10", "DESCRICAO": "Disjuntor caixa moldada XT4N 250 TMA"},
+        {"ITEM": "3.4", "DESCRICAO": "Derivador de corrente (Shunt) 300A/60mV"},
+        {"ITEM": "12", "DESCRICAO": "Rolamento"},
+    ])
+    assert [m.item for m in materiais] == ["3.10", "3.4", 12]
