@@ -28,6 +28,11 @@ pasta final; sem as duas, a última pasta (`docpack.nome_do_subsistema`). A ET e
 capítulo do A3 vêm da mapeadora (colunas I e J), que é a fonte de verdade: o nome da
 pasta nem sempre é o da ET.
 
+**Uma pasta, um dossiê** (decisão do Luan, 2026-11-09): duas listas nunca dividem a pasta
+final. `docpack.planejar` recusa a pasta que já tem o `_STATUS_PMIB` de outra lista
+("cada lista tem a sua pasta"; o `~$` do Excel aberto não conta), venha o destino da IA
+ou da mão; dividindo, as duas misturariam LMR, IMAGENS e DATASHEETS.
+
 ## Entradas
 
 - **Mapeadora** (`conferencia_revisoes.ler_mapeadora`, que desde 2026-11-03 lê também
@@ -66,7 +71,14 @@ lista editável com as pastas que já existem naquele nível, dentro das escolhi
 esquerda (`docpack.arvore_existente` + `opcoes_do_nivel`), ou com um nome novo); **Sugerir com IA** (tarefa `docpack_pasta`, prompt
 `prompts.montar_docpack_pasta`, que devolve `{et, capitulo, sistema, subsistema, pasta}`
 -- a resposta do formato de antes, sem `et`, ainda é lida -- e preenche os campos das
-linhas marcadas, nunca cria; a IA dessa tarefa se escolhe no botão **Configurar IA** do
+linhas marcadas, nunca cria. Desde 2026-11-09 a IA não vê só os nomes das pastas (que não
+têm nada a ver com a mapeadora: "SERVIÇOS AUXILIARES ELÉTRICOS" / "CONVERSORES ESTÁTICOS
+DE FREQUÊNCIA" mora em `03 - EBOP/SFC`): o **Listar** faz UM levantamento da raiz
+(`docpack.levantar`) e guarda o **mapa** de como as listas já estão organizadas
+(`docpack.mapa_das_listas`: especificação | capítulo -> a pasta-mãe dos dossiês) e, de
+cada lista, as **vizinhas** (`docpack.listas_vizinhas`: a mesma especificação, já com
+dossiê; primeiro o mesmo capítulo, depois o mesmo ramo, até 15), que o **Sugerir** manda
+junto; o motivo da sugestão diz qual vizinha ela seguiu. A IA dessa tarefa se escolhe no botão **Configurar IA** do
 cabeçalho do DocPack, entrada "Etapa 1: Estrutura" -- a "Etapa 2: Conteúdo" é o webhook
 do workflow da Etapa 2 (2026-11-05) --, o mesmo da janela "Modelos de IA": `sigft/app/ia_por_modulo.py`);
 **Pré-visualizar** (o plano no console, sem tocar no disco); **Criar dossiês** (o plano,
