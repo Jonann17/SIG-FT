@@ -12,6 +12,13 @@ Escreva cada linha pensando em quem usa o SIG-FT, não em quem o programa:
 "a busca do AutoSpec passa a funcionar com a VPN ligada" é útil; "refatorado o
 cliente HTTP para usar WinHttpGetProxyForUrl" não.
 
+## 1.4.1 - 2026-11-10
+
+- Upload de Ficha Duplicada: depois da auditoria, o robô volta à sub-aba certa de Condições e espera os campos aparecerem antes de preencher. Evita as esperas repetidas por controles de outra aba; campo ausente ou que não pôde ser conferido continua como pendência.
+- Upload de Ficha Duplicada: o salvamento de Condições exige o botão da própria seção. Se ele não aparece ou há mais de um candidato, o robô informa a pendência, sem acionar outro SALVAR da página.
+- Upload de Ficha Duplicada: a confirmação de salvamento passa a ser acompanhada logo após o clique, inclusive quando duas imagens ou duas tentativas mostram a mesma mensagem. Isso reduz os reenvios causados por uma confirmação que passava despercebida.
+- Upload de Ficha Duplicada: fechar o navegador interrompe o lote e informa quantas fichas não chegaram a começar. Os resultados parciais voltam à tela e à planilha; as fichas não iniciadas ficam sem alteração, e o resumo de tempos inclui a etapa interrompida.
+
 ## 1.4.0 - 2026-11-10
 
 - IA: o painel antigo de **Modelos de IA** (provedor, modelo padrão, modo avançado por tarefa) **saiu**; a escolha é só por módulo, na janela Modelos de IA e no botão **Configurar IA** de cada módulo. O "Modelo manual" (um modelo do OpenRouter fora do catálogo) veio para a IA Externa. O que já estava escolhido continua valendo.
