@@ -46,22 +46,25 @@ ou da mão; dividindo, as duas misturariam LMR, IMAGENS e DATASHEETS.
 
 - **Quais listas** (`listas_sem_status_pmib`): PB020 no código (com ou sem o `-0x` do
   SMF), sem PREÇO no título, sem LINK DA PLANILHA, sem `_STATUS_PMIB` vivo com o mesmo
-  código na raiz (`status_pmib_arquivos.listar`) e **já saída no Aconex**.
+  código na raiz (`status_pmib_arquivos.listar`), **já saída no Aconex e não cancelada**.
 - **Só a lista que já saiu no Aconex** (2026-11-09, pedido do Luan, depois de criar
   dossiês de listas que nem tinham saído: "se a lista de sobressalentes ainda nem foi
-  emitida, não quero criar o DocPack dela"). `docpack.motivo_nao_emitida` lê o que o
-  último Gestão PMIB deixou na mapeadora e deixa de fora, nesta ordem:
+  emitida, não quero criar o DocPack dela"; a lista não emitida não tem PDF para baixar,
+  e a Etapa 2 parava nela). `docpack.motivo_nao_emitida` lê o que o último Gestão PMIB
+  deixou na mapeadora e deixa de fora, nesta ordem:
   1. STATUS REAL **NÃO EMITIDO** (`status_real.eh_nao_emitido`, sem acento e sem caixa):
-     a batalha de versões do DocManager não achou emissão que valha, por exemplo a lista
-     que só passou pela integração ou cuja primeira emissão foi cancelada;
-  2. STATUS DA REVISÃO **LISTA NÃO EMITIDA** (`pmib_manager.LISTA_NAO_EMITIDA`, a marca
+     a batalha de versões do DocManager não achou emissão que valha;
+  2. STATUS REAL **Cancelado** (2026-11-10, também pedido do Luan; `status_real.eh_cancelado`
+     aceita os sinônimos do Aconex: Anulado, VOID, Issued for Annulment);
+  3. STATUS DA REVISÃO **LISTA NÃO EMITIDA** (`pmib_manager.LISTA_NAO_EMITIDA`, a marca
      que a cascata da SITUAÇÃO NO PMIB já conhecia);
-  3. sem ÚLTIMA REVISÃO EMITIDA;
-  4. sem STATUS REAL: não dá para saber, e a lista espera o Gestão PMIB (um dossiê a mais
+  4. sem ÚLTIMA REVISÃO EMITIDA;
+  5. sem STATUS REAL: não dá para saber, e a lista espera o Gestão PMIB (um dossiê a mais
      custa apagar as pastas e o link; esperar custa rodar o Gestão).
 
-  A ÚLTIMA REVISÃO EMITIDA sozinha não basta: ela vem da versão corrente do Aconex, mesmo
-  quando o status dela é de integração. Em processo ou não aprovada, a lista saiu e entra.
+  A ÚLTIMA REVISÃO EMITIDA sozinha não basta: o Gestão PMIB a copia da versão corrente do
+  extrato do Aconex, que pode existir antes de a lista sair. Em processo ou não aprovada,
+  a lista saiu e entra.
   As que ficam de fora vão para o console do **Listar**, uma linha por lista com o motivo
   (`listas_nao_emitidas`), e o total da tela diz quantas foram.
 - **A lista com preço não é do DocPack** (2026-11-05, pedido do Jonathan: o agente do
@@ -82,8 +85,8 @@ ou da mão; dividindo, as duas misturariam LMR, IMAGENS e DATASHEETS.
 
 ## A tela
 
-Mapeadora e pasta raiz; os três templates; **Listar sem _STATUS_PMIB** (com as que ainda
-não saíram no Aconex contadas no total e listadas no console); a tabela
+Mapeadora e pasta raiz; os três templates; **Listar sem _STATUS_PMIB** (com as que não
+saíram no Aconex, ou foram canceladas, contadas no total e listadas no console); a tabela
 (marcar a lista; ET, capítulo, sistema, subsistema e pasta final com dois cliques, numa
 lista editável com as pastas que já existem naquele nível, dentro das escolhidas à
 esquerda (`docpack.arvore_existente` + `opcoes_do_nivel`), ou com um nome novo); **Sugerir com IA** (tarefa `docpack_pasta`, prompt
