@@ -24,6 +24,7 @@ from __future__ import annotations
 import time
 
 from sigft.core.rpa import seletores_duplicada as sel
+from sigft.core.rpa.engine import NavegadorFechado
 from sigft.services import duplicadas_spec as spec
 
 # Pausas. Cada uma existe porque o portal é assíncrono e não avisa quando
@@ -105,6 +106,8 @@ def _confirmar_escrita(portal, seletor, esperado, nome_do_campo, callback_log=No
     _log = _log_de(callback_log)
     try:
         lido = (portal.engine.get_value(seletor) or "").strip()
+    except NavegadorFechado:
+        raise
     except Exception as erro:  # noqa: BLE001 -- campo pode nem existir
         _log(f"      [Erro] Não consegui reler {nome_do_campo}: "
              f"{type(erro).__name__}: {erro}")
@@ -155,6 +158,8 @@ def mensagem_de_validacao(portal, seletor_input):
     """
     try:
         id_da_mensagem = portal.engine.atributo(seletor_input, "aria-describedby")
+    except NavegadorFechado:
+        raise
     except Exception:  # noqa: BLE001 -- ler a tela não derruba a ficha
         return ""
     if not id_da_mensagem:
@@ -172,6 +177,8 @@ def campo_recusado(portal, seletor_input):
     """
     try:
         classe = portal.engine.atributo(seletor_input, "class") or ""
+    except NavegadorFechado:
+        raise
     except Exception:  # noqa: BLE001
         return False
     return f" {NOT_VALID} " in f" {' '.join(str(classe).split())} "
@@ -227,6 +234,8 @@ def houve_colisao(portal):
     """
     try:
         return bool(portal.engine.contar(sel.XPATH_REFERENCIA_AVISO_COLISAO))
+    except NavegadorFechado:
+        raise
     except Exception:  # noqa: BLE001 -- observar não pode derrubar a escrita
         return False
 
@@ -262,6 +271,8 @@ def texto_do_aviso_de_colisao(portal, seletor_input=None):
         try:
             do_bloco = " ".join(
                 (portal.engine.texto(sel.XPATH_REFERENCIA_AVISO_COLISAO) or "").split())
+        except NavegadorFechado:
+            raise
         except Exception:  # noqa: BLE001
             do_bloco = ""
         if do_bloco:
@@ -490,6 +501,8 @@ def ids_dos_campos_de_referencia(portal):
     for posicao in range(1, total + 1):
         try:
             ids.append(portal.engine.atributo(f"({seletor})[{posicao}]", "id") or "")
+        except NavegadorFechado:
+            raise
         except Exception:  # noqa: BLE001
             ids.append("")
     return [i for i in ids if i]
@@ -556,6 +569,8 @@ def achar_combo_do_fabricante(portal, callback_log=None):
         seletor = f"({sel.XPATH_FABRICANTE_TOGGLE})[{posicao}]"
         try:
             conteudo = " ".join((portal.engine.texto(seletor) or "").split())
+        except NavegadorFechado:
+            raise
         except Exception:  # noqa: BLE001
             conteudo = ""
         e_o_fornecedor = _sem_acento(FORNECEDOR_FIXO) in _sem_acento(conteudo)
@@ -601,6 +616,8 @@ def _clicar_no_mais(portal, seletor_mais, callback_log=None):
     try:
         portal.engine.click_estrito(seletor_mais)
         return True
+    except NavegadorFechado:
+        raise
     except Exception as erro:  # noqa: BLE001 -- ver docstring
         _log(f"      [!] O '+' não aceitou o clique: {type(erro).__name__}: {erro}")
         return False
@@ -668,6 +685,8 @@ def linha_entrou_na_tabela(portal, seletor_input, referencia):
         try:
             if campo_recusado(portal, seletor_input):
                 return False
+        except NavegadorFechado:
+            raise
         except Exception:  # noqa: BLE001 -- observar não pode derrubar a escrita
             pass
         time.sleep(INTERVALO_DA_LINHA_NA_TABELA)
@@ -689,6 +708,8 @@ def fotografar_bloco_da_linha(portal, seletor_mais, seletor_input,
                             (f"{nome_da_secao}: o '+'", seletor_mais)):
         try:
             html = portal.engine.html_do_elemento(seletor)
+        except NavegadorFechado:
+            raise
         except Exception:  # noqa: BLE001 -- ver docstring
             html = ""
         log_auditoria.bloco(titulo, html or f"(nada casou {seletor})")
@@ -897,6 +918,8 @@ def selecionar_unidade_adimensional(portal, linha, callback_log=None):
         if not portal.engine.contar(seletor):
             return False           # linha sem dropdown de unidade: normal
         opcoes = list(portal.engine.opcoes(seletor) or [])
+    except NavegadorFechado:
+        raise
     except Exception:  # noqa: BLE001
         return False
 
@@ -909,6 +932,8 @@ def selecionar_unidade_adimensional(portal, linha, callback_log=None):
 
     try:
         portal.engine.selecionar_por_texto(seletor, escolhida)
+    except NavegadorFechado:
+        raise
     except Exception as erro:  # noqa: BLE001
         _log(f"      [Aviso] Não consegui selecionar {escolhida!r} como unidade: "
              f"{type(erro).__name__}.")
@@ -1091,6 +1116,8 @@ def sobrou_caracteristica_alem_do_codigo(portal):
     sobraram = []
     try:
         total = portal.engine.contar(sel.XPATH_CARACTERISTICAS_LINHAS)
+    except NavegadorFechado:
+        raise
     except Exception:  # noqa: BLE001 -- ler a tela não derruba a ficha
         return []
     for indice in range(1, (total or 0) + 1):
@@ -1162,6 +1189,8 @@ def escrever_referencia_da_ge(portal, referencia, callback_log=None,
     try:
         id_do_campo = portal.engine.atributo(
             f"({sel.XPATH_REFERENCIA_GE_INPUT})[1]", "id") or ""
+    except NavegadorFechado:
+        raise
     except Exception:  # noqa: BLE001
         pass
 

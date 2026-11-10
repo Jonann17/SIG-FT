@@ -202,9 +202,7 @@ def test_secao_SEM_palavra_mapeada_ainda_aceita_a_classe():
 # =============================================================================
 # 3. Âncora que não casa nada não pode calar
 # =============================================================================
-def test_ancora_que_nao_acha_botao_avisa_antes_de_cair_no_generico():
-    """Cair no comportamento antigo em silêncio recriaria o defeito sem
-    deixar rastro. Se a âncora falhar, o log diz."""
+def test_ancora_que_nao_acha_botao_nao_salva_outra_secao():
     class _SemBotaoAncorado(_TelaComQuatroSalvar):
         def contar(self, seletor):
             # Nenhuma das duas fórmulas de âncora acha nada.
@@ -215,12 +213,13 @@ def test_ancora_que_nao_acha_botao_avisa_antes_de_cair_no_generico():
     engine = _SemBotaoAncorado()
     linhas = []
 
-    PMIBPortal(engine).clicar_salvar_do_bloco(
+    ok = PMIBPortal(engine).clicar_salvar_do_bloco(
         "//div[contains(@id, 'TechnicalCharacteristics')]",
         "Características Técnicas", linhas.append)
 
     assert any("âncora" in l.lower() for l in linhas)
-    assert engine.cliques == ["GeneralInformations"], "caiu na varredura antiga"
+    assert ok is False
+    assert engine.cliques == []
 
 
 # =============================================================================
@@ -308,9 +307,7 @@ def test_a_ancora_desce_antes_de_subir():
     assert ok is True
 
 
-def test_sem_SALVAR_dentro_da_secao_a_subida_continua_valendo():
-    """O plano B não some: seção cujo botão fica fora do container ainda é
-    salva, e o log diz que foi por subida."""
+def test_subida_que_encontra_quatro_salvar_recusa_ambiguidade():
     class _SemSalvarDentro(_SecaoComSalvarDentro):
         def contar(self, seletor):
             if "SALVAR" in seletor and "TechnicalCharacteristics" in seletor \
@@ -322,10 +319,10 @@ def test_sem_SALVAR_dentro_da_secao_a_subida_continua_valendo():
     dormir, agora = _relogio()
     linhas = []
 
-    PMIBPortal(engine).salvar_e_confirmar(
+    ok = PMIBPortal(engine).salvar_e_confirmar(
         "Fabricantes e Fornecedores",
         ancora="//div[contains(@id, 'TechnicalCharacteristics')]",
         callback_log=linhas.append, sleep_fn=dormir, agora_fn=agora)
 
-    assert engine.cliques == ["GeneralInformations"]
-    assert any("subindo" in l.lower() for l in linhas)
+    assert ok is False
+    assert engine.cliques == []

@@ -32,6 +32,7 @@ from __future__ import annotations
 import time
 
 from sigft.core.rpa import seletores_duplicada as sel
+from sigft.core.rpa.engine import NavegadorFechado
 from sigft.services import duplicadas_extrator as extrator
 from sigft.services.duplicadas_injetor import ResultadoDaSecao, _literal, _log_de
 
@@ -81,6 +82,8 @@ def _marcar_checkbox_da_linha(portal, linha, callback_log=None):
         try:
             if portal.engine.contar(seletor) != 1:
                 continue
+        except NavegadorFechado:
+            raise
         except Exception:  # noqa: BLE001
             continue
         return portal.check_or_uncheck(seletor, True, callback_log)
@@ -101,6 +104,8 @@ def associar_um(portal, descricao, callback_log=None):
     linha = sel.XPATH_DOCUMENTO_LINHA_POR_DESCRICAO.format(texto=_literal(descricao))
     try:
         quantas = portal.engine.contar(linha)
+    except NavegadorFechado:
+        raise
     except Exception:  # noqa: BLE001
         quantas = 0
 
@@ -140,6 +145,8 @@ def ja_associados(portal, escopo=None):
         seletor = sel.XPATH_PAINEL_POR_ID.format(id=_literal(escopo)) + seletor
     try:
         total = portal.engine.contar(seletor)
+    except NavegadorFechado:
+        raise
     except Exception:  # noqa: BLE001
         return []
     descricoes = []
@@ -208,6 +215,8 @@ def presentes_pelo_texto(portal, desejados, escopo):
             if portal.engine.contar(
                     painel + XPATH_TEXTO_NO_PAINEL.format(texto=_literal(descricao))):
                 achados.append(descricao)
+        except NavegadorFechado:
+            raise
         except Exception:  # noqa: BLE001 -- ler não derruba a ficha
             continue
     return achados

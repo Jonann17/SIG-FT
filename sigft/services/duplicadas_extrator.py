@@ -23,6 +23,7 @@ import time
 
 from sigft import config
 from sigft.core.rpa import seletores_duplicada as sel
+from sigft.core.rpa.engine import NavegadorFechado
 from sigft.services import duplicadas_spec as spec
 
 
@@ -104,6 +105,8 @@ def _buscar_na_aba_atual(portal, pmib):
         try:
             if portal.engine.element_exists(linha):
                 return True
+        except NavegadorFechado:
+            raise
         except Exception:  # noqa: BLE001 -- tabela remontando; tentar de novo
             pass
         time.sleep(INTERVALO_DA_LINHA)
@@ -170,10 +173,14 @@ def recarregar_lista(portal, callback_log=None):
     for _ in range(2):
         try:
             portal.engine.press("ESCAPE")
+        except NavegadorFechado:
+            raise
         except Exception:  # noqa: BLE001 -- sem foco; segue
             pass
     try:
         portal.engine.goto(config.PORTAL_URL)
+    except NavegadorFechado:
+        raise
     except Exception as erro:  # noqa: BLE001 -- recarregar não derruba o lote
         _log(f"   [!] Não consegui recarregar a página: {type(erro).__name__}: {erro}")
         return False
@@ -274,6 +281,8 @@ def esperar_a_ficha_abrir(portal, espera=None):
                 # O clique pegou; dar tempo do painel montar antes de varrer.
                 time.sleep(PAUSA_APOS_ABRIR_FICHA)
                 return True
+        except NavegadorFechado:
+            raise
         except Exception:  # noqa: BLE001 -- tela trocando; tentar de novo
             pass
         time.sleep(INTERVALO_DA_FICHA)
@@ -400,6 +409,8 @@ def _resgatar_texto_ao_lado(engine, uniao, onde_esta_o_rotulo, campos):
             if not engine.element_exists(caixa):
                 continue
             inteiro = " ".join(str(engine.texto(caixa) or "").split())
+        except NavegadorFechado:
+            raise
         except Exception:  # noqa: BLE001 -- não dá para ler; não inventa valor
             continue
         cabeca = " ".join(str(rotulo).split())
@@ -630,6 +641,8 @@ def fotografar(portal, titulo, log_auditoria=None, seletor=None):
     for alvo in alvos:
         try:
             html = portal.engine.html_do_elemento(alvo)
+        except NavegadorFechado:
+            raise
         except Exception:  # noqa: BLE001 -- observar não pode derrubar o lote
             html = ""
         if html:
@@ -660,6 +673,8 @@ def id_do_painel(portal, nome):
     alvo = sel.XPATH_ABA_DA_FICHA.format(texto=_literal_xpath(nome))
     try:
         return portal.engine.atributo(f"({alvo})[1]", "aria-controls") or ""
+    except NavegadorFechado:
+        raise
     except Exception:  # noqa: BLE001 -- ler a tela não derruba a ficha
         return ""
 
@@ -729,6 +744,8 @@ def _esperar_a_subaba_montar(engine):
     for _ in range(TENTATIVAS_DA_SUBABA):
         try:
             atual = engine.contar(XPATH_VALORES_NA_TELA)
+        except NavegadorFechado:
+            raise
         except Exception:  # noqa: BLE001 -- tela remontando
             atual = -1
         if atual > 0 and atual == anterior:

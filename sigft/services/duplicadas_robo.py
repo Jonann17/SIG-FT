@@ -29,6 +29,7 @@ import time
 from sigft import config
 from sigft.core.excel import status_sheet
 from sigft.core.rpa import seletores_duplicada as sel
+from sigft.core.rpa.engine import NavegadorFechado
 from sigft.core.rpa.factory import criar_engine
 from sigft.core.rpa.portal import PMIBPortal
 from sigft.services import duplicadas_condicoes as condicoes
@@ -151,6 +152,7 @@ class ResultadoDaFicha:
         self.pmib_original = pmib_original
         self.secoes = []
         self.erro_fatal = ""
+        self.interrompida = False
         # Cronômetro. Ver `tempos`/`resumo_de_tempos` -- serve para responder
         # ONDE o robô gasta o tempo, em vez de a gente adivinhar caçando
         # `time.sleep`.
@@ -662,8 +664,14 @@ def processar_ficha(portal, ficha, callback_log=None, log_auditoria=None):
             resultado.registrar(injetor.ResultadoDaSecao(
                 "imagens", False, "não abri a aba de Documentos e imagens"))
 
+    except NavegadorFechado as erro:
+        resultado.interrompida = True
+        resultado.erro_fatal = f"Navegador fechado; ficha interrompida: {erro}"
+        resultado.marcar("etapa interrompida")
+        _log(f"   [Aviso] {resultado.erro_fatal}")
     except Exception as erro:  # noqa: BLE001 -- ver docstring
         resultado.erro_fatal = f"{type(erro).__name__}: {erro}"
+        resultado.marcar("etapa com erro")
         _log(f"   [Erro] {resultado.erro_fatal}")
 
     _log(f"   {resultado.resumo}")
@@ -695,6 +703,10 @@ def processar_lote(fichas, callback_log=None, callback_progresso=None,
                             log_auditoria=log_auditoria))
         if callback_progresso:
             callback_progresso(posicao / total if total else 1)
+        if resultados[-1].interrompida:
+            _log(f"\n[Aviso] Lote interrompido: navegador fechado. {total - posicao} ficha(s) "
+                 "não iniciada(s); selecione-as novamente para retomar o lote.")
+            break
 
     ok = [r for r in resultados if r.ok]
     _log(f"\n=== Fim do lote: {len(ok)} de {len(resultados)} ficha(s) sem pendência.")

@@ -25,6 +25,7 @@ from __future__ import annotations
 import time
 
 from sigft.core.rpa import seletores_duplicada as sel
+from sigft.core.rpa.engine import NavegadorFechado
 from sigft.services import duplicadas_extrator as extrator
 from sigft.services.duplicadas_injetor import ResultadoDaSecao, _literal, _log_de
 
@@ -133,6 +134,8 @@ def _escolher_pdm_da_duplicada(portal, callback_log=None):
         texto=_literal(sel.PDM_DA_DUPLICADA))
     try:
         quantas = portal.engine.contar(alvo)
+    except NavegadorFechado:
+        raise
     except Exception:  # noqa: BLE001
         quantas = 0
 
@@ -175,6 +178,8 @@ def _confirmar_a_troca(portal, callback_log=None):
         try:
             if not portal.engine.contar(sel.XPATH_DIALOGO_CONFIRMAR):
                 return True
+        except NavegadorFechado:
+            raise
         except Exception:  # noqa: BLE001 -- tela remontando
             return True
         try:
@@ -182,6 +187,8 @@ def _confirmar_a_troca(portal, callback_log=None):
             _log("      Confirmei a troca de PDM (o portal avisa que as "
                  "Características Técnicas serão removidas -- é o que se quer).")
             time.sleep(PAUSA_APOS_DIGITAR)
+        except NavegadorFechado:
+            raise
         except Exception as erro:  # noqa: BLE001
             _log(f"      [Erro] O diálogo 'Trocar PDM' está na tela e o "
                  f"CONFIRMAR não aceitou o clique: {type(erro).__name__}. "
@@ -223,10 +230,14 @@ def _fechar_o_dropdown(portal, callback_log=None):
             # tinha dado certo (medido em 2026-08-25).
             if not portal.engine.contar(sel.XPATH_PDM_DROPBOX_ABERTO):
                 return True
+        except NavegadorFechado:
+            raise
         except Exception:  # noqa: BLE001 -- tela remontando
             pass
         try:
             portal.engine.press("ESCAPE")
+        except NavegadorFechado:
+            raise
         except Exception:  # noqa: BLE001 -- sem foco; a próxima volta tenta
             pass
         time.sleep(INTERVALO_DO_FECHO)
@@ -259,6 +270,8 @@ def _listar_opcoes(portal, callback_log=None, limite=LIMITE_DE_OPCOES_NO_LOG):
     _log = _log_de(callback_log)
     try:
         total = portal.engine.contar(sel.XPATH_PDM_OPCAO_QUALQUER)
+    except NavegadorFechado:
+        raise
     except Exception:  # noqa: BLE001 -- observar não pode derrubar o lote
         total = 0
 

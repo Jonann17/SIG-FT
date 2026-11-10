@@ -113,7 +113,7 @@ import time
 # as primitivas de `RPAEngine` -- `PMIBPortal` inteiro passa a ser
 # motor-agnóstico, que era o que faltava para os uploads rodarem em Playwright.
 from sigft import config
-from sigft.core.rpa.engine import ElementoObsoleto, RPAEngine, TempoEsgotado
+from sigft.core.rpa.engine import ElementoObsoleto, NavegadorFechado, RPAEngine, TempoEsgotado
 
 # Seletores DEFAULT de `pesquisar_e_abrir` -- IDÊNTICOS aos de
 # `apagar_lmr_backend.ApagarLMRAutomation._pesquisar_e_abrir` e
@@ -782,6 +782,8 @@ class PMIBPortal:
             if not self.engine.contar(seletor):
                 return ""
             return self.engine.texto(seletor) or ""
+        except NavegadorFechado:
+            raise
         except Exception:  # noqa: BLE001 -- ler a tela não derruba a ficha
             return ""
 
@@ -820,6 +822,8 @@ class PMIBPortal:
         sleep_fn = sleep_fn or time.sleep
         try:
             id_do_balao = self.engine.atributo(seletor_gatilho, "aria-describedby")
+        except NavegadorFechado:
+            raise
         except Exception:  # noqa: BLE001
             return ""
         if not id_do_balao:
@@ -844,6 +848,8 @@ class PMIBPortal:
         for acordar in (self.engine.passar_o_mouse, self.engine.focar):
             try:
                 acordar(seletor_gatilho)
+            except NavegadorFechado:
+                raise
             except Exception:  # noqa: BLE001
                 continue
             sleep_fn(self.PAUSA_DO_BALAO)
@@ -864,6 +870,8 @@ class PMIBPortal:
             if not self.engine.contar(seletor):
                 return None
             return self.engine.get_value(seletor) or ""
+        except NavegadorFechado:
+            raise
         except Exception:  # noqa: BLE001
             return None
 
@@ -901,12 +909,16 @@ class PMIBPortal:
             seletor = XPATH_MENSAGEM_DE_SUCESSO if so_sucesso else XPATH_MENSAGEM_DE_FEEDBACK
         try:
             total = self.engine.contar(seletor)
+        except NavegadorFechado:
+            raise
         except Exception:  # noqa: BLE001
             return []
         textos = []
         for posicao in range(1, (total or 0) + 1):
             try:
                 textos.append(self.engine.texto(f"({seletor})[{posicao}]"))
+            except NavegadorFechado:
+                raise
             except Exception:  # noqa: BLE001
                 continue
         return textos
@@ -950,6 +962,8 @@ class PMIBPortal:
         try:
             if self.engine.esta_marcado(seletor) == should_check:
                 return True  # já estava como se queria
+        except NavegadorFechado:
+            raise
         except Exception as erro:  # noqa: BLE001
             # Não dá para LER o estado -- e aí não se clica. `esta_marcado`
             # levanta quando o elemento não existe e também quando ele existe
@@ -966,24 +980,32 @@ class PMIBPortal:
 
         try:
             self.safe_click(seletor)
+        except NavegadorFechado:
+            raise
         except Exception:  # noqa: BLE001
             pass
 
         try:
             if self.engine.esta_marcado(seletor) == should_check:
                 return True
+        except NavegadorFechado:
+            raise
         except Exception:  # noqa: BLE001
             pass
 
         # 2ª tentativa por outro mecanismo.
         try:
             self.engine.click_dom(seletor)
+        except NavegadorFechado:
+            raise
         except Exception as erro:  # noqa: BLE001
             _log(f"      [!] Não consegui alcançar o controle {seletor}: {erro}")
             return False
 
         try:
             final = self.engine.esta_marcado(seletor)
+        except NavegadorFechado:
+            raise
         except Exception as erro:  # noqa: BLE001
             _log(f"      [!] Cliquei em {seletor} mas não consigo ler o estado: {erro}")
             return False
@@ -1040,7 +1062,8 @@ class PMIBPortal:
                 # seção errada" e "não salvei" produzem o mesmo silêncio.
                 _diga(f"      [Injetor] Cliquei no botão SALVAR {posicao} de "
                       f"{total} da tela.")
-                time.sleep(2.5)  # Aguarda a requisição do servidor OutSystems
+                # O chamador espera a confirmação; uma pausa aqui pode
+                # deixar um toast breve desaparecer antes da primeira leitura.
                 return True
 
         _diga(f"      [Aviso] Botão SALVAR não encontrado/visível para "
@@ -1055,9 +1078,8 @@ class PMIBPortal:
         `ancora` é qualquer elemento da seção: o container dela ou um campo
         dentro. Ver `XPATH_SALVAR_DO_BLOCO` para o porquê da fórmula.
 
-        Âncora que não casa botão nenhum cai na varredura antiga -- mas
-        AVISANDO. Cair em silêncio recriaria o defeito de 2026-08-20 sem
-        deixar rastro no log, que é a pior combinação possível.
+        Sem um botão único da seção, recusa o salvamento. A varredura da
+        página inteira pode gravar Informações Gerais no lugar de Condições.
         """
         def _diga(mensagem):
             if callback_log:
@@ -1074,23 +1096,31 @@ class PMIBPortal:
         for descricao, formula in tentativas:
             candidato = formula.format(ancora=ancora)
             try:
-                if self.engine.contar(candidato):
+                quantidade = self.engine.contar(candidato)
+                if quantidade == 1:
                     seletor, como = candidato, descricao
                     break
+                if quantidade > 1:
+                    _diga(f"      [Erro] A âncora de {nome_secao!r} encontrou "
+                          f"{quantidade} botões SALVAR ({descricao}); não cliquei.")
+                    return False
+            except NavegadorFechado:
+                raise
             except Exception:  # noqa: BLE001
                 continue
 
         if not seletor:
             _diga(f"      [Aviso] A âncora da seção {nome_secao!r} não achou "
-                  f"botão SALVAR. Caindo na varredura da tela -- confira se a "
-                  f"seção certa foi gravada.")
-            return self.clicar_salvar_visivel(nome_secao, callback_log)
+                  f"botão SALVAR. Não salvei outra seção; confira a sub-aba aberta.")
+            return False
 
         alvo = f"({seletor})[1]"
         try:
             self.engine.scroll_to(alvo)
             time.sleep(0.5)
             self.engine.click_raw(alvo)
+        except NavegadorFechado:
+            raise
         except Exception as erro:  # noqa: BLE001 -- ver abaixo
             # ⚠️ SALVAR QUE NÃO DÁ PARA CLICAR É PENDÊNCIA, NÃO QUEDA DA FICHA.
             # Em 2026-08-20 o botão da seção de imagens resolveu, estava
@@ -1104,7 +1134,7 @@ class PMIBPortal:
                   f"estar cobrindo o botão -- salve à mão.")
             return False
         _diga(f"      [Injetor] SALVAR da seção {nome_secao} ({como}).")
-        time.sleep(2.5)  # requisição do servidor OutSystems
+        # Começar a observar a confirmação imediatamente após o clique.
         return True
 
     def clicar_e_confirmar(self, seletor_botao: str, nome_secao: str = "",
@@ -1118,9 +1148,16 @@ class PMIBPortal:
         seção fica inacessível enquanto ele está aberto, e tentar clicá-lo
         gastava 20 s de timeout (log de 2026-08-20).
         """
+        if not self.esperar_confirmacao_anterior_sumir(nome_secao, sleep_fn=sleep_fn):
+            if callback_log:
+                callback_log(f"      [!] A confirmação anterior de {nome_secao!r} "
+                             "não sumiu; não repeti o envio.")
+            return False
         antes = {m for m in self._mensagens_de_feedback() if m}
         try:
             self.engine.click_raw(f"({seletor_botao})[1]")
+        except NavegadorFechado:
+            raise
         except Exception as erro:  # noqa: BLE001 -- clique que não pega é pendência
             if callback_log:
                 callback_log(f"      [Erro] Não consegui clicar em "
@@ -1156,16 +1193,18 @@ class PMIBPortal:
         que for de sucesso **e não estava na tela antes do clique**. Funciona
         sem conhecer a redação.
 
-        Limite conhecido e declarado: salvar DUAS VEZES a mesma seção, na
-        mesma tela, produziria um toast de texto idêntico ao anterior e este
-        método não o reconheceria como novo. No fluxo da ficha duplicada cada
-        seção é salva uma vez; se um dia deixar de ser, esta é a linha a
-        rever. (2026-09-28: a LMR salva a mesma seção a cada código, e chama
-        `esperar_confirmacao_anterior_sumir` antes de cada SALVAR.)
+        Antes de repetir uma seção, espera o toast anterior sair. A segunda
+        imagem e o reparo de Condições produzem textos idênticos; comparar
+        só o texto sem essa espera descartava a confirmação nova como velha.
 
         O texto lido vai para o log mesmo quando não confirma -- é assim que a
         redação real aparece, sem ninguém precisar inspecionar a tela.
         """
+        if not self.esperar_confirmacao_anterior_sumir(nome_secao, sleep_fn=sleep_fn):
+            if callback_log:
+                callback_log(f"      [!] A confirmação anterior de {nome_secao!r} "
+                             "não sumiu; não repeti o salvamento.")
+            return False
         antes = {m for m in self._mensagens_de_feedback() if m}
 
         # `ancora` decide QUAL botão. Sem ela, cai na varredura da tela -- que
@@ -1361,6 +1400,8 @@ class PMIBPortal:
 
             time.sleep(2.5)  # Pausa crucial para o site reconstruir a tabela HTML
             return True
+        except NavegadorFechado:
+            raise
         except Exception:
             return False
 
@@ -1498,6 +1539,8 @@ class PMIBPortal:
                 break
             except ElementoObsoleto:
                 time.sleep(1)
+            except NavegadorFechado:
+                raise
             except Exception:
                 return False
 
