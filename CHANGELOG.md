@@ -12,7 +12,7 @@ Escreva cada linha pensando em quem usa o SIG-FT, não em quem o programa:
 "a busca do AutoSpec passa a funcionar com a VPN ligada" é útil; "refatorado o
 cliente HTTP para usar WinHttpGetProxyForUrl" não.
 
-## 1.4.0 - 2026-11-04
+## 1.4.0 - 2026-11-10
 
 - IA: o painel antigo de **Modelos de IA** (provedor, modelo padrão, modo avançado por tarefa) **saiu**; a escolha é só por módulo, na janela Modelos de IA e no botão **Configurar IA** de cada módulo. O "Modelo manual" (um modelo do OpenRouter fora do catálogo) veio para a IA Externa. O que já estava escolhido continua valendo.
 - IA: a **chave do Gemini deixa de ser obrigatória**. O Cria Fichas recusava o lote sem ela mesmo com o OpenRouter ou o Workflow AMP escolhidos; e quem nunca escolheu modelo, sem a chave do Gemini e com a do OpenRouter, passa a usar o mesmo modelo pelo OpenRouter. (O AutoSpec ainda pede a chave do Gemini quando nada foi escolhido para ele.)
@@ -57,6 +57,7 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 - DocPack: na Etapa 2, o **ITEM com ponto** é gravado como está na lista (`3.10`, `3.4`); antes `3.10` virava 3,1, que é outro item.
 - DocPack: o agente do AMP da Etapa 2 (o da Criação do _STATUS_PMIB) ganhou as regras das **listas com duas partes**: com os sobressalentes contratuais à esquerda e os fornecidos à direita, só os fornecidos viram material, com o ITEM do item contratual. A regra se cola no agente, no AMP: o texto está em `amp/criacao_status_pmib/agente.md`.
 - Revisão no AMP e DocPack (Etapa 2): o botão de copiar das tabelas do HTML do AMP passa a levar **só as linhas, sem o cabeçalho**, que é o mesmo da planilha. O cabeçalho continua na tabela, para ler. A regra se cola nos agentes, no AMP (`amp/revisao_de_listas/agente.md` e `amp/criacao_status_pmib/agente.md`).
+- DocPack: a Etapa 1 deixa de oferecer a **lista que ainda não saiu no Aconex** e a **cancelada**. Antes, toda lista da mapeadora sem _STATUS_PMIB aparecia na tabela, e dava para criar o dossiê de uma lista que nem tinha sido emitida, sem PDF para a Etapa 2 baixar. Agora fica de fora a lista com STATUS REAL NÃO EMITIDO ou Cancelado (ou marcada LISTA NÃO EMITIDA no STATUS DA REVISÃO), sem ÚLTIMA REVISÃO EMITIDA ou sem STATUS REAL (rode o Gestão PMIB antes); o total da tela diz quantas foram, e o console diz quais e por quê. A lista em processo ou não aprovada já saiu, e continua aparecendo.
 
 ## 1.3.2 - 2026-10-30
 

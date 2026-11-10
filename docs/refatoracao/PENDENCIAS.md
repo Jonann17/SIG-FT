@@ -972,3 +972,10 @@ duble. Depois, rodar a suite com a 9.2 e tirar o `<9.2`.~~
 |---|---|---|---|
 | 2026-11-06 | AutoSpec no Workflow AMP (execução 393441) | O AutoSpec grava no cache de resposta (`Documentos\SIG-FT\autospec_resposta_cache.json`) o JSON que a IA devolveu antes de conferir se ele preenche algum campo pedido. Quando a leitura trouxe um pedaço (o objeto de um campo, só com chaves "não pedidas"), a ficha voltou em branco e o rerun da mesma ficha serve o mesmo pedaço do cache, sem chamar a IA. A causa do pedaço foi corrigida no workflow e na leitura do SIG-FT; quem já rodou precisa renomear o arquivo do cache. | Frente do AutoSpec: não gravar no cache a resposta sem nenhum campo pedido (`generate_ai_response`, `_cache_resposta_gravar`). |
 
+
+## 2026-11-09 — DocPack: a lista que ainda não saiu no Aconex
+
+| Data | Descoberto em | Descrição | Destino proposto |
+|---|---|---|---|
+| 2026-11-09 | DocPack, Etapa 1 (pedido do Luan) | A Etapa 1 deixou de oferecer a lista que ainda não saiu no Aconex (`docpack.motivo_nao_emitida`: STATUS REAL NÃO EMITIDO, LISTA NÃO EMITIDA, sem ÚLTIMA REVISÃO EMITIDA ou sem STATUS REAL), mas a **Etapa 2 não lê a mapeadora**: varre os `_STATUS_PMIB` vazios da raiz. Um dossiê de lista não emitida, criado antes da correção ou à mão, entra no Consultar e falha (`Aconex: ...`): a lista não emitida não tem PDF para baixar, e nada vai ao AMP (correção do Luan, 2026-11-10: "não tem como baixar do Aconex uma lista que não foi emitida"). | Apagar os dossiês criados por engano. Se voltar a acontecer: a Etapa 2 ler a mapeadora do DocPack e pular, com o motivo no console, o dossiê que `motivo_nao_emitida` recusa. |
+| 2026-11-09 | DocPack, Etapa 1 | ~~A lista com STATUS REAL **Cancelado** continua sendo oferecida: o pedido foi só a não emitida.~~ **RESOLVIDO (2026-11-10)**: o Luan pediu para tirar também (`status_real.eh_cancelado`, `docpack.MOTIVO_CANCELADA`). | — |

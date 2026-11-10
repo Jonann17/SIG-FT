@@ -193,6 +193,27 @@ def test_listar_le_a_mapeadora_e_mostra(qt_interface, qtbot, tmp_path, monkeypat
     assert tela.existentes == {"03 - EBOP": {}}
 
 
+def test_listar_deixa_de_fora_a_lista_que_ainda_nao_saiu_no_aconex(qt_interface, qtbot, tmp_path, monkeypatch):
+    """2026-11-09, pedido do Luan: a lista que ainda não saiu no Aconex não entra na tabela, o total
+    diz quantas ficaram de fora e o console diz quais, e por quê. 2026-11-10: a cancelada também."""
+    emitida = cr.ListaNaMapeadora(CODIGO, "0B", "Em Processo", "Aprovado", "", None, descricao="A")
+    nao_emitida = cr.ListaNaMapeadora(OUTRO, "0A", "Para Análise", "NÃO EMITIDO", "", None, descricao="B")
+    cancelada = cr.ListaNaMapeadora("#ST00=CANC&MPB020", "0", "Cancelado", "Cancelado", "", None, descricao="C")
+    tela = _tela(qtbot, tmp_path, monkeypatch)
+    _rodar_no_mesmo_fio(tela, monkeypatch)
+    tela.caminho_mapeadora = str(tmp_path / "m.xlsx")
+    monkeypatch.setattr(tela_mod.conferencia_svc, "ler_mapeadora",
+                        lambda caminho: cr.Mapeadora(tmp_path / "m.xlsx", None, [emitida, nao_emitida, cancelada]))
+    linhas = []
+    monkeypatch.setattr(tela, "log", lambda msg, *a, **k: linhas.append(str(msg)))
+    tela._listar()
+    assert [lista.codigo for lista in tela.listas] == [CODIGO]
+    assert tela.lbl_totais.text().startswith("1 lista(s) sem _STATUS_PMIB")
+    assert "2 não emitida(s) ou cancelada(s) no Aconex" in tela.lbl_totais.text()
+    assert any(OUTRO in linha and "NÃO EMITIDO" in linha for linha in linhas)
+    assert any("#ST00=CANC&MPB020" in linha and "Cancelado" in linha for linha in linhas)
+
+
 def test_listar_e_sugerir_levam_as_vizinhas_e_o_mapa_a_ia(qt_interface, qtbot, tmp_path, monkeypatch):
     """2026-11-09: o Listar calcula as listas vizinhas e o mapa da organização, com UM levantamento da
     raiz, e a sugestão da IA recebe os dois. Raiz de verdade: a lista A já tem dossiê."""
@@ -202,7 +223,7 @@ def test_listar_e_sugerir_levam_as_vizinhas_e_o_mapa_a_ia(qt_interface, qtbot, t
     especificacao, capitulo = "SERVIÇOS AUXILIARES ELÉTRICOS", "CONVERSORES ESTÁTICOS DE FREQUÊNCIA"
     a = cr.ListaNaMapeadora("#ST00=B01BMU10&EPB020", "1A", "", "", "1A", None, descricao="SFC 50 E 60 HZ",
                             especificacao=especificacao, capitulo=capitulo)
-    b = cr.ListaNaMapeadora("#ST00=B01BMU10TA010&EPB020", "0", "", "", "0C", None, descricao="SFC THF",
+    b = cr.ListaNaMapeadora("#ST00=B01BMU10TA010&EPB020", "0", "", "Aprovado", "0C", None, descricao="SFC THF",
                             especificacao=especificacao, capitulo=capitulo)
     tela = _tela(qtbot, tmp_path, monkeypatch)
     _rodar_no_mesmo_fio(tela, monkeypatch)

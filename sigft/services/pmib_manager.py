@@ -91,6 +91,11 @@ def achar_aba(wb, nome_esperado, coluna_chave, linha_cabecalho=2):
 # =============================================================================
 # SITUAÇÃO NO PMIB (a "cascata")  [função pura desde 2026-10-05]
 # =============================================================================
+# A marca da lista que ainda não saiu, no STATUS DA REVISÃO: a cascata a repete,
+# e o DocPack não cria o dossiê dela (`docpack.motivo_nao_emitida`).
+LISTA_NAO_EMITIDA = "LISTA NÃO EMITIDA"
+
+
 # A mesma cascata de prioridade que morava inline no passo 6; virou função para
 # poder ser testada sem planilha. `dados` é o que `_calcula_fichas` devolve
 # (total e contagem por STATUS, PMIB distinto, sem DUPLICADO); `status_revisao`
@@ -106,8 +111,8 @@ def situacao_no_pmib(dados, status_revisao=""):
     aprov = dados.get('fichas_aprovadas', 0)
     na = dados.get('fichas_na', 0)
 
-    if status_revisao == "LISTA NÃO EMITIDA":
-        return "LISTA NÃO EMITIDA"
+    if status_revisao == LISTA_NAO_EMITIDA:
+        return LISTA_NAO_EMITIDA
     if status_revisao == "SEM LISTA":
         return "SEM LISTA"
     if total == 0:

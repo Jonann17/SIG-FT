@@ -63,6 +63,11 @@ lista de materiais do `_STATUS_PMIB` a partir do PDF da lista. Ela é feita pelo
   (`dialogos_selecao.botao_de_pasta`), que abre a pasta do PDF, do `_STATUS_PMIB` e do HTML do AMP.
 - **Preço nunca se inventa.** Uma coluna com cara de preço na tabela do agente é ignorada, com aviso, e o VALOR UNITÁRIO fica vazio.
 - **Planilha já preenchida.** Se o `_STATUS_PMIB` já tem material, a gravação é recusada.
+- **Não lê a mapeadora.** Desde 2026-11-09 a Etapa 1 não oferece a lista que ainda não saiu no
+  Aconex, nem (2026-11-10) a cancelada (`15-docpack.md`), mas a Etapa 2 varre os `_STATUS_PMIB`
+  vazios da raiz: um dossiê de lista não emitida, criado antes disso ou à mão, entra no
+  Consultar e falha (`Aconex: ...`), porque a lista não emitida não tem PDF para baixar; nada
+  vai ao AMP. Apague esses dossiês (PENDENCIAS 2026-11-09).
 - **Cabeçalho.** É achado pelo texto, nas 15 primeiras linhas (o do `_STATUS_PMIB` está na linha 5).
 
 ## O que não foi provado aqui

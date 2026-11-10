@@ -253,6 +253,8 @@ TEXTOS: dict[str, Texto] = {
         marcar("Cria a pasta, com os templates, de cada lista que ainda não tem _STATUS_PMIB."),
         (
             marcar("Lê a mapeadora: entram as listas sem link e sem _STATUS_PMIB na pasta raiz."),
+            marcar("A lista que não saiu no Aconex, ou foi cancelada (STATUS REAL), fica de fora; o console diz "
+                   "quais e por quê."),
             marcar("ET, capítulo, sistema e subsistema se editam com dois cliques; a IA pode sugerir."),
             marcar("Cada pasta ganha o _STATUS_PMIB e LMR, IMAGENS e DATASHEETS. A lista com preço é do módulo Lista de Preços."),
             marcar("Nada é sobrescrito. O link de cada dossiê novo vai para a mapeadora (só onde estava vazio)."),

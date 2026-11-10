@@ -30,6 +30,8 @@ def _chave(status: object) -> str:
 _APROVACAO = frozenset(_chave(s) for s in constants.STATUS_APROVACAO_UPPER)
 _REPROVACAO = frozenset(_chave(s) for s in constants.STATUS_REPROVACAO_UPPER)
 _EM_PROCESSO = "EM PROCESSO"  # o motor devolve o literal "Em Processo" (status_engine.py)
+_NAO_EMITIDO = _chave(constants.NAO_EMITIDO)
+_ANULACAO = frozenset(_chave(s) for s in constants.STATUS_ANULACAO_UPPER)
 
 
 # As colunas do histórico que a linha da verdade e a batalha leem.
@@ -55,6 +57,20 @@ def status_real_do_documento(historico: pd.DataFrame) -> str:
 def eh_aprovacao(status: object) -> bool:
     """Família de aprovação: Aprovado, Aprovado com Comentários, Para Assinatura (e o antigo APROVADO)."""
     return _chave(status) in _APROVACAO
+
+
+def eh_nao_emitido(status: object) -> bool:
+    """NÃO EMITIDO: a batalha não achou emissão que valha (só status de integração, sem veredito,
+    ou a primeira emissão terminada no fluxo). Sem acento e sem caixa, como `eh_aprovacao`: o
+    valor antigo, digitado à mão na mapeadora, também se encaixa."""
+    return _chave(status) == _NAO_EMITIDO
+
+
+def eh_cancelado(status: object) -> bool:
+    """Cancelado: a lista foi anulada no Aconex. O motor junta os rótulos do Aconex (Cancelado,
+    Anulado, VOID, Issued for Annulment) em Cancelado; os outros, digitados à mão, também se
+    encaixam, sem acento e sem caixa."""
+    return _chave(status) in _ANULACAO
 
 
 def categoria(status: object) -> Categoria:
