@@ -195,21 +195,23 @@ def test_listar_le_a_mapeadora_e_mostra(qt_interface, qtbot, tmp_path, monkeypat
 
 def test_listar_deixa_de_fora_a_lista_que_ainda_nao_saiu_no_aconex(qt_interface, qtbot, tmp_path, monkeypatch):
     """2026-11-09, pedido do Luan: a lista que ainda não saiu no Aconex não entra na tabela, o total
-    diz quantas ficaram de fora e o console diz quais, e por quê."""
+    diz quantas ficaram de fora e o console diz quais, e por quê. 2026-11-10: a cancelada também."""
     emitida = cr.ListaNaMapeadora(CODIGO, "0B", "Em Processo", "Aprovado", "", None, descricao="A")
     nao_emitida = cr.ListaNaMapeadora(OUTRO, "0A", "Para Análise", "NÃO EMITIDO", "", None, descricao="B")
+    cancelada = cr.ListaNaMapeadora("#ST00=CANC&MPB020", "0", "Cancelado", "Cancelado", "", None, descricao="C")
     tela = _tela(qtbot, tmp_path, monkeypatch)
     _rodar_no_mesmo_fio(tela, monkeypatch)
     tela.caminho_mapeadora = str(tmp_path / "m.xlsx")
     monkeypatch.setattr(tela_mod.conferencia_svc, "ler_mapeadora",
-                        lambda caminho: cr.Mapeadora(tmp_path / "m.xlsx", None, [emitida, nao_emitida]))
+                        lambda caminho: cr.Mapeadora(tmp_path / "m.xlsx", None, [emitida, nao_emitida, cancelada]))
     linhas = []
     monkeypatch.setattr(tela, "log", lambda msg, *a, **k: linhas.append(str(msg)))
     tela._listar()
     assert [lista.codigo for lista in tela.listas] == [CODIGO]
     assert tela.lbl_totais.text().startswith("1 lista(s) sem _STATUS_PMIB")
-    assert "1 ainda não emitida(s) no Aconex" in tela.lbl_totais.text()
+    assert "2 não emitida(s) ou cancelada(s) no Aconex" in tela.lbl_totais.text()
     assert any(OUTRO in linha and "NÃO EMITIDO" in linha for linha in linhas)
+    assert any("#ST00=CANC&MPB020" in linha and "Cancelado" in linha for linha in linhas)
 
 
 def test_listar_e_sugerir_levam_as_vizinhas_e_o_mapa_a_ia(qt_interface, qtbot, tmp_path, monkeypatch):

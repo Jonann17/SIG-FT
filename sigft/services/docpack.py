@@ -16,8 +16,9 @@ digitado, com uma sugestão da IA a pedido). Cada dossiê:
 Regras que não se negociam:
 
 * **Só a lista que já saiu no Aconex** (2026-11-09, `motivo_nao_emitida`): a com
-  STATUS REAL NÃO EMITIDO, a marcada LISTA NÃO EMITIDA e a sem ÚLTIMA REVISÃO EMITIDA ou
-  sem STATUS REAL na mapeadora ficam fora da tabela, e o "Listar" diz quais e por quê.
+  STATUS REAL NÃO EMITIDO ou Cancelado (2026-11-10), a marcada LISTA NÃO EMITIDA e a sem
+  ÚLTIMA REVISÃO EMITIDA ou sem STATUS REAL na mapeadora ficam fora da tabela, e o
+  "Listar" diz quais e por quê.
 * **Nunca sobrescreve.** Arquivo que já existe fica como está (aviso); lista com
   `_STATUS_PMIB` vivo em qualquer lugar da raiz é pulada.
 * **O template é copiado byte a byte e editado no XML** (`core/excel/cirurgico.py`):
@@ -102,23 +103,28 @@ def levantar(raiz: str | Path | None):
 
 
 # [2026-11-09] Pedido do Luan, depois de criar dossiês de listas que nem tinham saído no Aconex:
-# "se a lista de sobressalentes ainda nem foi emitida, não quero criar o DocPack dela".
+# "se a lista de sobressalentes ainda nem foi emitida, não quero criar o DocPack dela". A lista
+# não emitida não tem PDF para baixar, e a Etapa 2 pararia nela. [2026-11-10] A cancelada também.
 MOTIVO_NAO_EMITIDO = "STATUS REAL = NÃO EMITIDO"
+MOTIVO_CANCELADA = "STATUS REAL = Cancelado"
 MOTIVO_LISTA_NAO_EMITIDA = f"STATUS DA REVISÃO = {LISTA_NAO_EMITIDA}"
 MOTIVO_SEM_REVISAO = "sem ÚLTIMA REVISÃO EMITIDA"
 MOTIVO_SEM_STATUS_REAL = "sem STATUS REAL (o Gestão PMIB não achou a lista no Aconex, ou ainda não rodou)"
 
 
 def motivo_nao_emitida(lista: ListaNaMapeadora) -> str | None:
-    """Por que a lista ainda não conta como saída no Aconex, ou `None` se ela saiu.
+    """Por que a lista não conta como saída no Aconex (não emitida, ou cancelada), ou `None` se
+    ela saiu.
 
     Lê o que o último Gestão PMIB deixou na mapeadora. A ÚLTIMA REVISÃO EMITIDA sozinha não
-    basta: ela vem da versão corrente do Aconex, mesmo quando o status dela é de integração.
-    Quem diz se a lista saiu é o STATUS REAL, a batalha de versões do DocManager. Sem ele não dá
-    para saber, e a lista fica de fora: um dossiê a mais custa apagar as pastas e o link na
-    mapeadora; esperar custa rodar o Gestão PMIB."""
+    basta: o Gestão PMIB a copia da versão corrente do extrato do Aconex, que pode existir antes
+    de a lista sair. Quem diz se a lista saiu é o STATUS REAL, a batalha de versões do
+    DocManager. Sem ele não dá para saber, e a lista fica de fora: um dossiê a mais custa apagar
+    as pastas e o link na mapeadora; esperar custa rodar o Gestão PMIB."""
     if status_real.eh_nao_emitido(lista.status_real):
         return MOTIVO_NAO_EMITIDO
+    if status_real.eh_cancelado(lista.status_real):
+        return MOTIVO_CANCELADA
     if _sem_acento(lista.status_da_revisao) == _sem_acento(LISTA_NAO_EMITIDA):
         return MOTIVO_LISTA_NAO_EMITIDA
     if not str(lista.ultima_revisao or "").strip():
@@ -142,14 +148,14 @@ def _sem_dossie(mapeadora: Mapeadora, raiz: str | Path | None, levantamento) -> 
 def listas_sem_status_pmib(mapeadora: Mapeadora, raiz: str | Path | None, *,
                            levantamento=None) -> list[ListaNaMapeadora]:
     """As listas do DocPack: sem LINK DA PLANILHA, sem `_STATUS_PMIB` vivo (pelo código) na raiz
-    e já saídas no Aconex (`motivo_nao_emitida`)."""
+    e já saídas no Aconex, sem cancelamento (`motivo_nao_emitida`)."""
     return [lista for lista in _sem_dossie(mapeadora, raiz, levantamento) if motivo_nao_emitida(lista) is None]
 
 
 def listas_nao_emitidas(mapeadora: Mapeadora, raiz: str | Path | None, *,
                         levantamento=None) -> list[tuple[ListaNaMapeadora, str]]:
-    """(lista, motivo) das que seriam do DocPack, mas ainda não saíram no Aconex: o "Listar"
-    diz quais ficaram de fora, e por quê."""
+    """(lista, motivo) das que seriam do DocPack, mas não saíram no Aconex ou foram canceladas:
+    o "Listar" diz quais ficaram de fora, e por quê."""
     fora = []
     for lista in _sem_dossie(mapeadora, raiz, levantamento):
         motivo = motivo_nao_emitida(lista)

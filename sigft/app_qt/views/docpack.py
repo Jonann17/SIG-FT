@@ -4,7 +4,7 @@ subpastas LMR, IMAGENS e DATASHEETS. A lista com preço é do módulo Lista de P
 
 A tela é fina: quais listas, onde e o que vai em cada dossiê estão em
 `services/docpack.py`. A tabela mostra as listas da mapeadora sem `_STATUS_PMIB` que já
-saíram no Aconex (as outras ficam no console do "Listar", com o motivo);
+saíram no Aconex e não foram canceladas (as outras ficam no console do "Listar", com o motivo);
 as colunas de pasta (ET, capítulo, sistema, subsistema, pasta final -- a hierarquia
 da ET, corrigida pelo Luan em 2026-11-04) se editam com dois cliques, numa lista com
 as pastas que já existem naquele nível (dentro das escolhidas à esquerda) ou com um
@@ -261,8 +261,8 @@ class ModuloDocPack(ModuleFrame):
             item.setToolTip(1, lista.descricao)
         dialogos_selecao.ajustar_ao_conteudo(self.tabela)
         if nao_emitidas:
-            self.lbl_totais.setText(t("{n} lista(s) sem _STATUS_PMIB; {k} ainda não emitida(s) no Aconex, "
-                                      "fora da tabela", n=len(self.listas), k=nao_emitidas))
+            self.lbl_totais.setText(t("{n} lista(s) sem _STATUS_PMIB; {k} não emitida(s) ou cancelada(s) no "
+                                      "Aconex, fora da tabela", n=len(self.listas), k=nao_emitidas))
         else:
             self.lbl_totais.setText(t("{n} lista(s) sem _STATUS_PMIB", n=len(self.listas)))
 
@@ -307,8 +307,8 @@ class ModuloDocPack(ModuleFrame):
         # _STATUS_PMIB, e onde ficam os dossiês das outras, de onde saem as vizinhas e o mapa da IA.
         levantamento = docpack_svc.levantar(raiz)
         listas = docpack_svc.listas_sem_status_pmib(mapeadora, raiz, levantamento=levantamento)
-        # [2026-11-09] A lista que ainda não saiu no Aconex fica fora da tabela (pedido do Luan),
-        # e o console diz quais e por quê: nada some calado.
+        # [2026-11-09] A lista que ainda não saiu no Aconex fica fora da tabela (pedido do Luan; a
+        # cancelada também, desde 2026-11-10), e o console diz quais e por quê: nada some calado.
         nao_emitidas = docpack_svc.listas_nao_emitidas(mapeadora, raiz, levantamento=levantamento)
         pastas = docpack_svc.pastas_dos_dossies(raiz, levantamento)
         vizinhas = docpack_svc.vizinhas_por_lista(listas, mapeadora.listas, pastas)
@@ -316,8 +316,8 @@ class ModuloDocPack(ModuleFrame):
         existentes = docpack_svc.arvore_existente(raiz)
         self.log(f"{len(listas)} lista(s) sem _STATUS_PMIB, de {len(mapeadora.listas)} na mapeadora.")
         if nao_emitidas:
-            self.log(f"{len(nao_emitidas)} lista(s) sem _STATUS_PMIB ficaram fora da tabela porque ainda não "
-                     "saíram no Aconex:")
+            self.log(f"{len(nao_emitidas)} lista(s) sem _STATUS_PMIB ficaram fora da tabela: não saíram no "
+                     "Aconex, ou foram canceladas:")
             for lista, motivo in nao_emitidas:
                 self.log(f"   ⏭️ {lista.codigo}: {motivo}")
         interface.na_interface(self._mostrar_listas, listas, existentes, vizinhas, mapa, len(nao_emitidas))

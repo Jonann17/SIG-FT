@@ -131,6 +131,14 @@ def test_lista_que_ainda_nao_saiu_no_aconex_tem_o_motivo(campos, no_motivo):
     assert motivo and no_motivo in motivo
 
 
+@pytest.mark.parametrize("status_real", ["Cancelado", "ANULADO", "VOID"])
+def test_lista_cancelada_no_aconex_fica_de_fora(status_real):
+    """2026-11-10, pedido do Luan: a cancelada também fica de fora (os sinônimos do Aconex, que o
+    motor junta em Cancelado, também: um valor antigo pode ter sido digitado à mão)."""
+    motivo = docpack.motivo_nao_emitida(_lista(status_real=status_real))
+    assert motivo and "Cancelado" in motivo
+
+
 @pytest.mark.parametrize("status_real", ["Aprovado", "Aprovado com Comentários", "Para Assinatura",
                                          "Em Processo", "Não Aprovado", "APROVADO"])
 def test_lista_que_saiu_no_aconex_nao_tem_motivo(status_real):
@@ -142,20 +150,23 @@ def test_listar_deixa_de_fora_a_lista_que_ainda_nao_saiu_no_aconex(tmp_path):
     raiz = tmp_path / "raiz"
     raiz.mkdir()
     nao_emitida, sem_revisao, com_link = "#ST00=NEMIT&MPB020", "#ST00=SEMREV&MPB020", "#ST00=LINK&MPB020"
+    cancelada = "#ST00=CANC&MPB020"
     caminho = _mapeadora(tmp_path, [
         (CODIGO, "LISTA DE SOBRESSALENTES - A", "", None),
         (nao_emitida, "LISTA DE SOBRESSALENTES - B", "", None,
          {"ÚLTIMA REVISÃO EMITIDA": "0A", "STATUS DA REVISÃO": "Para Análise", "STATUS REAL": "NÃO EMITIDO"}),
         (sem_revisao, "LISTA DE SOBRESSALENTES - C", "", None,
          {"ÚLTIMA REVISÃO EMITIDA": None, "STATUS DA REVISÃO": None, "STATUS REAL": None}),
+        (cancelada, "LISTA DE SOBRESSALENTES - E", "", None,
+         {"STATUS DA REVISÃO": "Cancelado", "STATUS REAL": "Cancelado"}),
         # Já tem dossiê: fica fora pelo link, e não entra na conta das não emitidas.
         (com_link, "LISTA DE SOBRESSALENTES - D", "0A", "x/y_STATUS_PMIB.xlsx", {"STATUS REAL": "NÃO EMITIDO"}),
     ])
     mapeadora = cr.ler_mapeadora(caminho)
     assert [lista.codigo for lista in docpack.listas_sem_status_pmib(mapeadora, raiz)] == [CODIGO]
     fora = docpack.listas_nao_emitidas(mapeadora, raiz)
-    assert [lista.codigo for lista, _motivo in fora] == [nao_emitida, sem_revisao]
-    assert "NÃO EMITIDO" in fora[0][1] and "ÚLTIMA REVISÃO EMITIDA" in fora[1][1]
+    assert [lista.codigo for lista, _motivo in fora] == [nao_emitida, sem_revisao, cancelada]
+    assert "NÃO EMITIDO" in fora[0][1] and "ÚLTIMA REVISÃO EMITIDA" in fora[1][1] and "Cancelado" in fora[2][1]
 
 
 def test_a_mapeadora_traz_as_colunas_do_docpack(tmp_path):

@@ -91,6 +91,13 @@ def test_eh_nao_emitido(status, esperado):
 
 
 @pytest.mark.parametrize("status, esperado", [
+    ("Cancelado", True), ("CANCELADO", True), ("Anulado", True), ("VOID", True), ("Issued for Annulment", True),
+    ("NÃO EMITIDO", False), ("Aprovado", False), ("Não Aprovado", False), ("", False), (None, False)])
+def test_eh_cancelado(status, esperado):
+    assert status_real.eh_cancelado(status) is esperado
+
+
+@pytest.mark.parametrize("status, esperado", [
     ("Para Assinatura", "aprovada"), ("APROVADO", "aprovada"), ("Aprovado com Comentários", "aprovada"),
     ("EM PROCESSO", "em_processo"), ("Em Processo", "em_processo"),
     ("Não Aprovado", "nao_aprovada"), ("NÃO APROVADO", "nao_aprovada"), ("NAO APROVADO", "nao_aprovada"),
