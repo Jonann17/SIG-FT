@@ -28,6 +28,7 @@ import time
 import unicodedata
 
 from sigft.core.rpa import seletores_duplicada as sel
+from sigft.core.rpa.engine import NavegadorFechado
 from sigft.services import duplicadas_extrator as extrator
 from sigft.services.duplicadas_injetor import ResultadoDaSecao, _literal, _log_de
 
@@ -35,6 +36,8 @@ from sigft.services.duplicadas_injetor import ResultadoDaSecao, _literal, _log_d
 PAUSA_ABERTURA_SECAO = 2.0
 PAUSA_TROCA_SUBABA = 1.5
 PAUSA_APOS_ESCREVER = 0.4
+TENTATIVAS_SUBABA = 20
+INTERVALO_SUBABA = 0.25
 
 
 def _seletor(sufixo):
@@ -374,13 +377,9 @@ def abrir_secao(portal, callback_log=None):
 
 
 def abrir_subaba(portal, nome, callback_log=None):
-    """Vai para a sub-aba `nome`. Armazenamento já vem aberta -- posição
-    `None` significa "não clique em nada"."""
-    posicao = sel.CONDICOES_POR_SUBABA[nome]["posicao"]
-    if posicao is None:
-        return
-    portal.safe_click(sel.XPATH_CONDICOES_SUBABA.format(posicao=posicao))
-    time.sleep(PAUSA_TROCA_SUBABA)
+    """Seleciona também Armazenamento: a auditoria pode ter deixado Descarte
+    aberta. Abrir o cabeçalho de Condições não reinicia a sub-aba ativa."""
+    reabrir_subaba(portal, nome, callback_log)
 
 
 def ler(portal, callback_log=None):
@@ -412,6 +411,8 @@ def ler(portal, callback_log=None):
         for sufixo in mapa["booleanos"]:
             try:
                 campos[sufixo] = bool(portal.engine.esta_marcado(_seletor(sufixo)))
+            except NavegadorFechado:
+                raise
             except Exception:  # noqa: BLE001
                 continue
         lido[nome] = campos
@@ -470,6 +471,22 @@ def ancora_da_subaba(nome):
     return _seletor(textos[0]) if textos else None
 
 
+def esperar_subaba_montar(portal, nome, callback_log=None):
+    """Espera uma âncora exclusiva da sub-aba antes de tocar em seus radios.
+
+    RadioButton1 existe em Armazenamento e Descarte. Uma contagem dele não
+    distingue a aba certa; o primeiro campo de texto distingue. Uma espera
+    limitada por sub-aba evita pagar o timeout do motor por campo ausente.
+    """
+    for _ in range(TENTATIVAS_SUBABA):
+        if portal.engine.contar(ancora_da_subaba(nome)) == 1:
+            return True
+        time.sleep(INTERVALO_SUBABA)
+    _log_de(callback_log)(f"      [!] {nome}: a sub-aba não mostrou seus campos; "
+                          "não escrevi nem salvei.")
+    return False
+
+
 def escrever_subaba(portal, nome, campos, callback_log=None):
     """Escreve os campos de UMA sub-aba. Devolve os sufixos que falharam.
 
@@ -488,14 +505,20 @@ def escrever_subaba(portal, nome, campos, callback_log=None):
     for sufixo, valor in campos.items():
         seletor = _seletor(sufixo)
         try:
+            if not isinstance(valor, bool) and not str(valor).strip():
+                continue
+            if not portal.engine.contar(seletor):
+                _log(f"      [!] {nome}/{sufixo}: campo ausente na sub-aba; não escrevi.")
+                falhas.append(sufixo)
+                continue
             if isinstance(valor, bool):
                 if not portal.check_or_uncheck(seletor, valor, callback_log):
                     falhas.append(sufixo)
                 continue
-            if not str(valor).strip():
-                continue
             portal.safe_fill(seletor, str(valor))
             time.sleep(PAUSA_APOS_ESCREVER)
+        except NavegadorFechado:
+            raise
         except Exception as erro:  # noqa: BLE001
             _log(f"      [!] {nome}/{sufixo}: {type(erro).__name__}: {erro}")
             falhas.append(sufixo)
@@ -540,25 +563,25 @@ def divergencias_da_subaba(portal, nome, campos, callback_log=None):
     for sufixo, esperado in campos.items():
         seletor = _seletor(sufixo)
         try:
+            if not isinstance(esperado, bool) and not str(esperado).strip():
+                continue
+            if not portal.engine.contar(seletor):
+                divergentes.append((sufixo, esperado, None))
+                continue
             if isinstance(esperado, bool):
                 marcado = bool(portal.engine.esta_marcado(seletor))
                 if marcado != esperado:
                     divergentes.append((sufixo, esperado, marcado))
                 continue
-            if not str(esperado).strip():
-                continue
-            # Mesma armadilha da leitura, e aqui ela seria pior: a
-            # conferência roda DEPOIS do salvamento, com a tela recarregada.
-            # `None` = o campo sumiu da tela; não dá para conferir, e inventar
-            # divergência a partir de uma leitura que não aconteceu seria
-            # ruído sobre a ficha certa.
             atual = portal.valor_se_existir(seletor)
-            if atual is None:
-                continue
-            if not mesmo_valor(esperado, atual):
+            # Ausente/ilegível não é conferido: nunca transformar uma falha
+            # de leitura (inclusive depois do SALVAR) em sucesso.
+            if atual is None or not mesmo_valor(esperado, atual):
                 divergentes.append((sufixo, esperado, atual))
-        except Exception:  # noqa: BLE001 -- não dá para conferir; não inventa falha
-            continue
+        except NavegadorFechado:
+            raise
+        except Exception:  # noqa: BLE001 -- sem leitura, permanece pendente
+            divergentes.append((sufixo, esperado, None))
     return divergentes
 
 
@@ -576,7 +599,9 @@ def descrever_divergencias(divergencias, limite=4):
     """`Input_PackingLength (pedi '40', ficou '')`, para o log."""
     partes = []
     for sufixo, esperado, atual in divergencias[:limite]:
-        if isinstance(esperado, bool):
+        if atual is None:
+            partes.append(f"{sufixo} (ausente ou ilegível; não conferido)")
+        elif isinstance(esperado, bool):
             partes.append(f"{sufixo} (pedi {'marcado' if esperado else 'desmarcado'}, "
                           f"ficou {'marcado' if atual else 'desmarcado'})")
         else:
@@ -601,6 +626,8 @@ def redigitar(portal, sufixo, valor, callback_log=None):
     _log = _log_de(callback_log)
     seletor = _seletor(sufixo)
     try:
+        if not portal.engine.contar(seletor):
+            return False
         if isinstance(valor, bool):
             return bool(portal.check_or_uncheck(seletor, valor, callback_log))
         portal.engine.clear(seletor)
@@ -608,6 +635,8 @@ def redigitar(portal, sufixo, valor, callback_log=None):
         portal.engine.press("TAB")
         time.sleep(PAUSA_APOS_ESCREVER)
         return True
+    except NavegadorFechado:
+        raise
     except Exception as erro:  # noqa: BLE001
         _log(f"      [!] Não consegui redigitar {sufixo}: {type(erro).__name__}: {erro}")
         return False
@@ -628,8 +657,9 @@ def autoconferir(portal, nome, campos, callback_log=None):
     _log(f"      [Autoconferência] {nome}: {len(divergencias)} campo(s) não "
          f"ficaram -- {descrever_divergencias(divergencias)}. Reescrevendo "
          f"tecla a tecla.")
-    for sufixo, esperado, _atual in divergencias:
-        redigitar(portal, sufixo, esperado, callback_log)
+    for sufixo, esperado, atual in divergencias:
+        if atual is not None:
+            redigitar(portal, sufixo, esperado, callback_log)
     sobra = divergencias_da_subaba(
         portal, nome, {s: campos[s] for s, _e, _a in divergencias}, callback_log)
     if not sobra:
@@ -677,14 +707,7 @@ def _salvar_e_conferir(portal, nome, campos, callback_log=None):
 
 
 def reabrir_subaba(portal, nome, callback_log=None):
-    """Como `abrir_subaba`, mas VOLTA também para Armazenamento.
-
-    `abrir_subaba` não clica em Armazenamento porque ela já vem aberta com a
-    seção -- certo na ida, errado na volta: depois de Descarte, "não clicar"
-    deixaria a releitura de Armazenamento olhando para a tela de Descarte, e
-    todo campo sairia `None` (= "não está na tela", não confere) -- um repasse
-    que passa sem ter olhado.
-    """
+    """Seleciona explicitamente a sub-aba, na ida e no repasse final."""
     posicao = sel.CONDICOES_POR_SUBABA[nome]["posicao"]
     if posicao is None:
         posicao = sel.POSICAO_ARMAZENAMENTO
@@ -710,6 +733,9 @@ def repassar(portal, escritas, callback_log=None):
     lidas = 0
     for nome, campos in escritas.items():
         reabrir_subaba(portal, nome, callback_log)
+        if not esperar_subaba_montar(portal, nome, callback_log):
+            perdidas[nome] = [(s, v, None) for s, v in campos.items()]
+            continue
         divergencias = divergencias_da_subaba(portal, nome, campos, callback_log)
         textos = [s for s, v in campos.items()
                   if not isinstance(v, bool) and str(v).strip()]
@@ -754,6 +780,8 @@ def conferir_ja_preenchida(portal, callback_log=None):
     _log = _log_de(callback_log)
     try:
         lido = ler(portal, callback_log=None)
+    except NavegadorFechado:
+        raise
     except Exception as erro:  # noqa: BLE001
         _log(f"      [Aviso] Não consegui conferir as Condições da ficha alvo: "
              f"{type(erro).__name__}: {erro}")
@@ -847,6 +875,10 @@ def escrever(portal, condicoes, callback_log=None):
         if not campos:
             continue
         abrir_subaba(portal, nome, callback_log)
+
+        if not esperar_subaba_montar(portal, nome, callback_log):
+            problemas.append(f"{nome}: sub-aba não carregada")
+            continue
 
         falhas = escrever_subaba(portal, nome, campos, callback_log)
         if falhas:

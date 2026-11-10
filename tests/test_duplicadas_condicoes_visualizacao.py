@@ -556,6 +556,9 @@ class _PortalQueAceitaTudo:
     def safe_click(self, _seletor):
         pass
 
+    def contar(self, _seletor):
+        return 1  # os campos desta tela já estão montados
+
     def safe_fill(self, seletor, texto):
         self.valores[self._sufixo(seletor)] = texto
 

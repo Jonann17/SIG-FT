@@ -14,6 +14,71 @@
 >
 > A lógica de negócio descrita aqui continua válida; o que mudou foi onde ela vive. Camadas novas que este texto não menciona: `sigft/core/excel/` (cabeçalho de planilha, código PMIB, gravação com retry), `sigft/core/llm/` (cliente de IA multi-provedor), `sigft/core/rpa/` (portal e motor), `sigft/core/callbacks.py` (o protocolo UI↔serviço).
 
+## Correção do lote travado (2026-11-10)
+
+O fluxo atual usa Playwright, `duplicadas_robo.processar_lote` e a tela Qt
+`copia_fichas.py`. O histórico abaixo também descreve partes do robô antigo.
+
+O log de 10/11 mostrou 501,3 s em Condições de uma ficha que levou 671,6 s.
+A auditoria visitava as quatro sub-abas e deixava **Descarte** selecionada;
+`abrir_subaba("Armazenamento")` não clicava em nada, supondo a primeira aba
+aberta. A escrita procurava os controles de Armazenamento em outra sub-aba,
+repetia timeouts e acabava tentando o primeiro SALVAR da página.
+
+O comportamento corrigido é:
+
+- Selecionar explicitamente todas as sub-abas, inclusive Armazenamento.
+  Antes da escrita e do repasse, esperar uma âncora de texto exclusiva da
+  sub-aba (até 5 s, além da pausa existente de troca). Radios com sufixos
+  compartilhados não servem como prova de que a aba certa abriu.
+- Conferir a presença dos campos antes de escrever. Campo ausente ou
+  ilegível permanece pendente; não é confirmado e não recebe tentativas
+  de digitação no vazio.
+- Exigir um único SALVAR pela âncora da seção. Âncora ausente ou ambígua
+  devolve falha, sem cair no primeiro botão da página.
+- Começar a ler a confirmação logo depois do clique, sem a pausa fixa de
+  2,5 s que podia esconder um aviso breve. Antes de repetir uma seção ou
+  enviar a próxima imagem, esperar o aviso anterior dessa seção desaparecer:
+  o texto idêntico da confirmação seguinte precisa ser reconhecido como novo.
+- Traduzir o fechamento de página/contexto para `NavegadorFechado` e
+  propagá-lo pelos tratamentos de falha recuperável. O lote para na ficha
+  interrompida e informa quantas não foram iniciadas. O resultado parcial
+  continua retornando à tela para a gravação habitual do `_STATUS_PMIB`;
+  as fichas não iniciadas não entram nos resultados nem são marcadas.
+  A etapa interrompida passa a entrar na medição de tempo.
+
+As regras de referências, PDM, leitura da original em visualização e os
+critérios conservadores de COMPLETO/INCOMPLETO da planilha continuam iguais.
+Não há retomada automática: o operador seleciona novamente as pendências.
+
+### Validação
+
+Os testes de regressão cobrem auditoria seguida de escrita, renderização
+tardia, campo ausente/ilegível, SALVAR ausente/ambíguo, mensagens de sucesso
+idênticas ou breves e fechamento do navegador. `scripts/smoke_duplicadas.py`
+executa o motor real em Chromium contra uma página **local sintética**,
+incluindo persistência ao trocar entre as quatro sub-abas.
+
+Para executar: `python scripts/smoke_duplicadas.py`. Requer Playwright e
+Chromium; `SIGFT_PLAYWRIGHT_EXECUTABLE` pode apontar para um navegador já
+instalado. Não acessa o PMIB nem substitui a validação do portal real.
+
+Roteiro no PMIB, depois de incorporar a correção a uma versão de teste:
+
+1. Processar uma ficha com auditoria ligada. Conferir que Armazenamento
+   aparece antes de sua escrita, sem a sequência de timeouts nos radios.
+2. Reabrir as quatro sub-abas e conferir valores PT/ES, números e opções.
+   Comparar as confirmações e os tempos com o log anterior.
+3. Conferir quantidade e legendas das imagens depois de envios consecutivos;
+   uma falha de confirmação ainda exige conferir o que foi salvo no portal.
+4. Em um lote de teste, fechar o navegador durante a segunda ficha: a fila
+   deve parar, preservar o resultado da primeira e anunciar as não iniciadas.
+5. Conferir `_STATUS_PMIB` e log; repetir uma ficha com auditoria desligada.
+
+Não foi executado um lote autenticado no PMIB nesta correção. Para quem usa
+o instalador, o PR só chega ao aplicativo após integração e publicação de
+uma nova versão; este trabalho não publica um instalador.
+
 ## Propósito
 
 Clona fichas técnicas completas (informações gerais, fornecedores, condições, características, documentos, imagens) de uma ficha base para uma ficha alvo, usando Selenium para scraping/injeção de dados com purga de características preservando CÓDIGO PMIB da base. Orquestra 3 fases: fila (GerenciadorFilaPMIB), extração base (ExtratorFichaBase), injeção alvo (InjetorFichaAlvo), atualização status.

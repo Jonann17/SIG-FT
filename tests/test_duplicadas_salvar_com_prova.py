@@ -115,6 +115,58 @@ def _portal(engine):
     return PMIBPortal(engine)
 
 
+@pytest.mark.parametrize("acao", ["imagem", "condicoes"])
+def test_salvamentos_seguidos_com_mensagem_identica(acao):
+    """O sucesso da 2ª imagem/reparo tem o mesmo texto; não é o toast velho."""
+    mensagem = ("A imagem foi adicionada com sucesso!" if acao == "imagem" else
+                "As condições de armazenamento foram modificadas com sucesso!")
+    engine = _EngineComToast(toast_ao_salvar=mensagem)
+    portal = PMIBPortal(engine)
+    tempo = [0.0]
+
+    def dormir(segundos):
+        tempo[0] += segundos
+        engine.toasts.clear()  # autoclose do toast anterior
+
+    def salvar():
+        opcoes = dict(sleep_fn=dormir, agora_fn=lambda: tempo[0])
+        if acao == "imagem":
+            return portal.clicar_e_confirmar("//button", "Documentos e imagens", **opcoes)
+        return portal.salvar_e_confirmar("Armazenamento", **opcoes)
+
+    assert salvar() is True
+    assert salvar() is True
+    assert len(engine.cliques) == 2
+    engine.toast_ao_salvar = None  # a terceira requisição NÃO foi confirmada
+    assert salvar() is False
+
+
+@pytest.mark.parametrize("ancora", [None, "//input[@id='volume']"])
+def test_confirmacao_breve_e_lida_logo_apos_o_clique(monkeypatch, ancora):
+    tempo = [0.0]
+
+    class ToastBreve(_EngineComToast):
+        expiracao = 0.0
+
+        def click_raw(self, seletor):
+            super().click_raw(seletor)
+            self.expiracao = tempo[0] + 1.0
+
+        def contar(self, seletor):
+            if tempo[0] >= self.expiracao:
+                self.toasts.clear()
+            return super().contar(seletor)
+
+    engine = ToastBreve(toast_ao_salvar="As condições de armazenamento foram modificadas com sucesso!")
+
+    def dormir(segundos):
+        tempo[0] += segundos
+
+    monkeypatch.setattr(portal_mod.time, "sleep", dormir)
+    assert PMIBPortal(engine).salvar_e_confirmar(
+        "Armazenamento", ancora=ancora, sleep_fn=dormir, agora_fn=lambda: tempo[0])
+
+
 def _sem_esperar():
     """`sleep`/`monotonic` de mentira: o teste não pode gastar 8 segundos."""
     relogio = {"t": 0.0}

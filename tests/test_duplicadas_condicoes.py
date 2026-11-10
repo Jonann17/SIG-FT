@@ -316,6 +316,80 @@ def test_armazenamento_e_a_aba_que_ja_vem_aberta():
     assert sel.CONDICOES_POR_SUBABA["Armazenamento"]["posicao"] is None
 
 
+def test_escrita_volta_ao_armazenamento_depois_da_auditoria(monkeypatch):
+    """A auditoria deixa Descarte ativa; abrir a seção não troca a sub-aba."""
+    portal, engine = _tela()
+    portal.ativa = "Armazenamento"
+    escritas_na_aba = []
+    clicar = portal.safe_click
+
+    def selecionar(seletor):
+        for nome, mapa in sel.CONDICOES_POR_SUBABA.items():
+            posicao = mapa["posicao"] or sel.POSICAO_ARMAZENAMENTO
+            if seletor == sel.XPATH_CONDICOES_SUBABA.format(posicao=posicao):
+                portal.ativa = nome
+        clicar(seletor)
+
+    def preencher(seletor, texto):
+        escritas_na_aba.append(portal.ativa)
+        engine.fill(seletor, texto)
+
+    monkeypatch.setattr(portal, "safe_click", selecionar)
+    monkeypatch.setattr(portal, "safe_fill", preencher)
+    monkeypatch.setattr(cond.extrator, "id_do_painel", lambda *_a: "")
+    monkeypatch.setattr(cond.extrator, "fotografar", lambda *_a, **_k: None)
+
+    cond.fotografar_edicao(portal, object())
+    assert portal.ativa == "Descarte"
+    cond.escrever(portal, {"Armazenamento": {"Input_PackingLength": "40"}})
+
+    assert escritas_na_aba == ["Armazenamento"]
+
+
+@pytest.mark.parametrize("valor", ["40", True, False])
+def test_campo_ausente_na_conferencia_e_pendencia(valor):
+    portal, _ = _tela(some_ao_ler=["campo"])
+    assert cond.divergencias_da_subaba(portal, "Armazenamento", {"campo": valor}) == [
+        ("campo", valor, None)]
+
+
+def test_campo_ausente_nao_dispara_escrita_nem_retentativa_lenta():
+    portal, engine = _tela(some_ao_ler=["Input_PackingLength", "Checkbox4"])
+    campos = {"Input_PackingLength": "40", "Checkbox4": True}
+
+    assert cond.escrever_subaba(portal, "Armazenamento", campos) == list(campos)
+    assert len(cond.autoconferir(portal, "Armazenamento", campos)) == 2
+    assert engine.escritas == []
+    assert engine.digitadas == []
+    assert engine.cliques == []
+
+
+def test_subaba_que_nao_montou_nao_recebe_escrita_nem_salvamento():
+    portal, engine = _tela(some_ao_ler=["Input_PackingLength"])
+    # O radio também existe em Descarte: sozinho não prova a aba aberta.
+    resultado = cond.escrever(portal, {"Armazenamento": {"RadioButton1-input": True}})
+    assert not resultado.ok
+    assert "RadioButton1-input" not in engine.marcados
+    assert portal.salvos == []
+
+
+def test_espera_subaba_renderizar_antes_de_escrever(monkeypatch):
+    portal, engine = _tela()
+    contar = engine.contar
+    leituras = []
+
+    def renderizando(seletor):
+        if "Input_PackingLength" in seletor:
+            leituras.append(seletor)
+            return int(len(leituras) >= 3)
+        return contar(seletor)
+
+    monkeypatch.setattr(engine, "contar", renderizando)
+    resultado = cond.escrever(portal, {"Armazenamento": {"Input_PackingLength": "40"}})
+    assert resultado.ok
+    assert engine.valores["Input_PackingLength"] == "40"
+
+
 def test_nenhum_id_gerado_no_mapa():
     """`b10-b17-b1-` é gerado e muda de sessão -- a regra do projeto
     (`IDS_GERADOS_NAO_USAR`) vale aqui como em todo o resto do arquivo."""

@@ -32,6 +32,7 @@ import tempfile
 import time
 
 from sigft.core.rpa import seletores_duplicada as sel
+from sigft.core.rpa.engine import NavegadorFechado
 from sigft.services.duplicadas_injetor import ResultadoDaSecao, _log_de
 
 PAUSA_APOS_UPLOAD = 2.0
@@ -103,6 +104,8 @@ def ler_da_original(portal, callback_log=None):
     _log = _log_de(callback_log)
     try:
         total = portal.engine.contar(sel.XPATH_IMAGENS_SLIDES)
+    except NavegadorFechado:
+        raise
     except Exception:  # noqa: BLE001
         total = 0
     if not total:
@@ -192,6 +195,8 @@ def subir_juntas(portal, legenda, caminhos, callback_log=None, *, timeout_confir
     try:
         portal.engine.enviar_arquivo(sel.XPATH_IMAGENS_INPUT_ARQUIVO,
                                      caminhos[0] if len(caminhos) == 1 else list(caminhos))
+    except NavegadorFechado:
+        raise
     except Exception as erro:  # noqa: BLE001
         _log(f"      [Erro] O upload de {nomes} falhou: "
              f"{type(erro).__name__}: {erro}")
@@ -215,6 +220,8 @@ def subir_juntas(portal, legenda, caminhos, callback_log=None, *, timeout_confir
     # o "+" da referência e o SALVAR sem toast já custaram neste módulo.
     try:
         na_lista = portal.engine.contar(sel.XPATH_IMAGENS_ITEM_NA_LISTA)
+    except NavegadorFechado:
+        raise
     except Exception:  # noqa: BLE001
         na_lista = 0
     if na_lista < len(caminhos):
@@ -249,10 +256,14 @@ def fechar_formulario(portal, callback_log=None):
         try:
             if not portal.engine.contar(sel.XPATH_IMAGENS_CONTAINER):
                 return True
+        except NavegadorFechado:
+            raise
         except Exception:  # noqa: BLE001 -- tela remontando
             pass
         try:
             portal.engine.press("ESCAPE")
+        except NavegadorFechado:
+            raise
         except Exception:  # noqa: BLE001 -- sem foco; a próxima volta tenta
             pass
         time.sleep(PAUSA_APOS_UPLOAD / 2)
@@ -261,10 +272,14 @@ def fechar_formulario(portal, callback_log=None):
         if portal.engine.contar(sel.XPATH_IMAGENS_CONTAINER) and portal.engine.contar(sel.XPATH_IMAGENS_CANCELAR):
             portal.safe_click(f"({sel.XPATH_IMAGENS_CANCELAR})[1]")
             time.sleep(PAUSA_APOS_UPLOAD / 2)
+    except NavegadorFechado:
+        raise
     except Exception:  # noqa: BLE001 -- a conferência abaixo diz se fechou
         pass
     try:
         livre = not portal.engine.contar(sel.XPATH_IMAGENS_CONTAINER)
+    except NavegadorFechado:
+        raise
     except Exception:  # noqa: BLE001
         livre = False
     if not livre:
@@ -283,6 +298,8 @@ def _abrir_formulario(portal):
             if portal.engine.contar(seletor):
                 portal.safe_click(f"({seletor})[1]")
                 return True
+        except NavegadorFechado:
+            raise
         except Exception:  # noqa: BLE001
             continue
     return False

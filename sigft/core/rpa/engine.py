@@ -84,6 +84,10 @@ class ErroRPA(Exception):
     """Base de todas as falhas traduzidas de um motor de browser."""
 
 
+class NavegadorFechado(ErroRPA):
+    """A página/contexto foi encerrada; repetir ações nesta sessão não funciona."""
+
+
 class TempoEsgotado(ErroRPA):
     """Uma espera estourou o tempo limite. Traduz
     `selenium.common.exceptions.TimeoutException` e

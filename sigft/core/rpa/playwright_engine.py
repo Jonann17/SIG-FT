@@ -64,6 +64,7 @@ import sys
 
 from sigft.core.rpa.engine import (
     ElementoObsoleto,  # noqa: F401 -- reexportado por simetria com selenium_engine
+    NavegadorFechado,
     RPAEngine,
     TempoEsgotado,
 )
@@ -209,6 +210,8 @@ class PlaywrightEngine(RPAEngine):
     # envelhece (ver `engine.py`).
     def _traduzir(self, excecao: BaseException) -> BaseException:
         for classe in type(excecao).__mro__:
+            if classe.__name__ == "TargetClosedError":
+                return NavegadorFechado(str(excecao))
             # `playwright.sync_api.TimeoutError` -- casado por NOME para não
             # obrigar um import de topo do SDK (ver docstring do módulo).
             if classe.__name__ in ("TimeoutError", "PlaywrightTimeoutError"):
@@ -253,9 +256,11 @@ class PlaywrightEngine(RPAEngine):
     # =====================================================================
     def click(self, seletor: str) -> None:
         """Contrapartida do `safe_click`: ENGOLE a falha, como a versão
-        Selenium (ver `engine.py`)."""
+        Selenium (ver `engine.py`), exceto quando a sessão foi encerrada."""
         try:
             self.click_estrito(seletor)
+        except NavegadorFechado:
+            raise
         except Exception:
             pass
 
@@ -364,9 +369,11 @@ class PlaywrightEngine(RPAEngine):
     def fill(self, seletor: str, texto: str) -> None:
         """Limpa e preenche -- equivalente ao Ctrl+A/Backspace/digitar da
         versão Selenium, que aqui é o próprio `Locator.fill`. Engole a falha,
-        igual à versão Selenium."""
+        igual à versão Selenium, exceto quando a sessão foi encerrada."""
         try:
             self.fill_estrito(seletor, texto)
+        except NavegadorFechado:
+            raise
         except Exception:
             pass
 
@@ -479,7 +486,7 @@ class PlaywrightEngine(RPAEngine):
     def element_exists(self, seletor: str) -> bool:
         """Checagem IMEDIATA, sem esperar -- `count()` não bloqueia, ao
         contrário de quase todo o resto da API do Playwright."""
-        return self.page.locator(_sel(seletor)).count() > 0
+        return self.contar(seletor) > 0
 
     def get_value(self, seletor: str) -> str:
         return self._executar(lambda: self._loc(seletor).input_value())
@@ -488,7 +495,7 @@ class PlaywrightEngine(RPAEngine):
     # Primitivas do CP 5.3 -- ver `engine.py` para o racional de cada uma
     # =====================================================================
     def contar(self, seletor: str) -> int:
-        return self.page.locator(_sel(seletor)).count()
+        return self._executar(lambda: self.page.locator(_sel(seletor)).count())
 
     def esta_visivel(self, seletor: str) -> bool:
         # `is_visible()` não espera -- é a checagem imediata que o contrato
