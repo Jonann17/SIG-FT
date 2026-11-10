@@ -30,6 +30,7 @@ def _chave(status: object) -> str:
 _APROVACAO = frozenset(_chave(s) for s in constants.STATUS_APROVACAO_UPPER)
 _REPROVACAO = frozenset(_chave(s) for s in constants.STATUS_REPROVACAO_UPPER)
 _EM_PROCESSO = "EM PROCESSO"  # o motor devolve o literal "Em Processo" (status_engine.py)
+_NAO_EMITIDO = _chave(constants.NAO_EMITIDO)
 
 
 # As colunas do histórico que a linha da verdade e a batalha leem.
@@ -55,6 +56,13 @@ def status_real_do_documento(historico: pd.DataFrame) -> str:
 def eh_aprovacao(status: object) -> bool:
     """Família de aprovação: Aprovado, Aprovado com Comentários, Para Assinatura (e o antigo APROVADO)."""
     return _chave(status) in _APROVACAO
+
+
+def eh_nao_emitido(status: object) -> bool:
+    """NÃO EMITIDO: a batalha não achou emissão que valha (a lista só passou pela integração, ou a
+    primeira emissão foi cancelada). Sem acento e sem caixa, como `eh_aprovacao`: o valor antigo,
+    digitado à mão na mapeadora, também se encaixa."""
+    return _chave(status) == _NAO_EMITIDO
 
 
 def categoria(status: object) -> Categoria:

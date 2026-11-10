@@ -3,7 +3,8 @@ não tem `_STATUS_PMIB`, com os templates (o `_STATUS_PMIB` e a Aplicação LMR)
 subpastas LMR, IMAGENS e DATASHEETS. A lista com preço é do módulo Lista de Preços.
 
 A tela é fina: quais listas, onde e o que vai em cada dossiê estão em
-`services/docpack.py`. A tabela mostra as listas da mapeadora sem `_STATUS_PMIB`;
+`services/docpack.py`. A tabela mostra as listas da mapeadora sem `_STATUS_PMIB` que já
+saíram no Aconex (as outras ficam no console do "Listar", com o motivo);
 as colunas de pasta (ET, capítulo, sistema, subsistema, pasta final -- a hierarquia
 da ET, corrigida pelo Luan em 2026-11-04) se editam com dois cliques, numa lista com
 as pastas que já existem naquele nível (dentro das escolhidas à esquerda) ou com um
@@ -248,7 +249,7 @@ class ModuloDocPack(ModuleFrame):
             return []
         return docpack_svc.opcoes_do_nivel(self.existentes, self._destino_da_linha(item), NIVEL_DA_COLUNA[coluna])
 
-    def _mostrar_listas(self, listas, existentes, vizinhas=None, mapa=()) -> None:
+    def _mostrar_listas(self, listas, existentes, vizinhas=None, mapa=(), nao_emitidas=0) -> None:
         self.listas, self.existentes = list(listas), dict(existentes)
         self.vizinhas, self.mapa = dict(vizinhas or {}), list(mapa)
         self.tabela.clear()
@@ -259,7 +260,11 @@ class ModuloDocPack(ModuleFrame):
             item.setCheckState(0, Qt.CheckState.Unchecked)
             item.setToolTip(1, lista.descricao)
         dialogos_selecao.ajustar_ao_conteudo(self.tabela)
-        self.lbl_totais.setText(t("{n} lista(s) sem _STATUS_PMIB", n=len(self.listas)))
+        if nao_emitidas:
+            self.lbl_totais.setText(t("{n} lista(s) sem _STATUS_PMIB; {k} ainda não emitida(s) no Aconex, "
+                                      "fora da tabela", n=len(self.listas), k=nao_emitidas))
+        else:
+            self.lbl_totais.setText(t("{n} lista(s) sem _STATUS_PMIB", n=len(self.listas)))
 
     def marcadas(self) -> list[tuple[int, docpack_svc.Destino]]:
         """(índice da lista, destino) de cada linha marcada."""
@@ -302,12 +307,20 @@ class ModuloDocPack(ModuleFrame):
         # _STATUS_PMIB, e onde ficam os dossiês das outras, de onde saem as vizinhas e o mapa da IA.
         levantamento = docpack_svc.levantar(raiz)
         listas = docpack_svc.listas_sem_status_pmib(mapeadora, raiz, levantamento=levantamento)
+        # [2026-11-09] A lista que ainda não saiu no Aconex fica fora da tabela (pedido do Luan),
+        # e o console diz quais e por quê: nada some calado.
+        nao_emitidas = docpack_svc.listas_nao_emitidas(mapeadora, raiz, levantamento=levantamento)
         pastas = docpack_svc.pastas_dos_dossies(raiz, levantamento)
         vizinhas = docpack_svc.vizinhas_por_lista(listas, mapeadora.listas, pastas)
         mapa = docpack_svc.mapa_das_listas(mapeadora.listas, pastas)
         existentes = docpack_svc.arvore_existente(raiz)
         self.log(f"{len(listas)} lista(s) sem _STATUS_PMIB, de {len(mapeadora.listas)} na mapeadora.")
-        interface.na_interface(self._mostrar_listas, listas, existentes, vizinhas, mapa)
+        if nao_emitidas:
+            self.log(f"{len(nao_emitidas)} lista(s) sem _STATUS_PMIB ficaram fora da tabela porque ainda não "
+                     "saíram no Aconex:")
+            for lista, motivo in nao_emitidas:
+                self.log(f"   ⏭️ {lista.codigo}: {motivo}")
+        interface.na_interface(self._mostrar_listas, listas, existentes, vizinhas, mapa, len(nao_emitidas))
 
     # -- a IA --------------------------------------------------------------
     def _sugerir(self) -> None:
