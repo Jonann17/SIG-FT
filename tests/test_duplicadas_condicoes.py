@@ -334,6 +334,17 @@ def test_escrita_volta_ao_armazenamento_depois_da_auditoria(monkeypatch):
         escritas_na_aba.append(portal.ativa)
         engine.fill(seletor, texto)
 
+    # O portal REMOVE do DOM a sub-aba fechada: o campo-âncora de Armazenamento
+    # só existe na tela enquanto ela é a ativa. É o que `abrir_subaba` usa para
+    # saber se precisa clicar.
+    contar = engine.contar
+
+    def contar_com_aba_ativa(seletor):
+        if seletor == cond.ancora_da_subaba("Armazenamento"):
+            return 1 if portal.ativa == "Armazenamento" else 0
+        return contar(seletor)
+
+    monkeypatch.setattr(engine, "contar", contar_com_aba_ativa)
     monkeypatch.setattr(portal, "safe_click", selecionar)
     monkeypatch.setattr(portal, "safe_fill", preencher)
     monkeypatch.setattr(cond.extrator, "id_do_painel", lambda *_a: "")

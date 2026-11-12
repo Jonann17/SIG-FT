@@ -381,6 +381,35 @@ def abrir_alvo_para_edicao(portal, pmib_alvo, callback_log=None):
     return True
 
 
+def reabrir_alvo_em_edicao(portal, pmib_alvo, callback_log=None,
+                           para_condicoes=False):
+    """Recuperação: a ficha alvo saiu da tela. Reabre em edição e, se pedido,
+    volta à seção de Condições (aba + sanfona). `True` se conseguiu."""
+    if not abrir_alvo_para_edicao(portal, pmib_alvo, callback_log):
+        return False
+    if para_condicoes:
+        if not extrator.abrir_secao(portal, sel.ABA_CONDICOES, callback_log):
+            return False
+        condicoes.abrir_secao(portal, callback_log)
+    return True
+
+
+def abrir_documentos_e_imagens(portal, pmib_alvo, callback_log=None):
+    """Abre a aba "Documentos e imagens" da alvo. Se ela não abre porque a
+    ficha saiu da tela, reabre a alvo em edição e tenta UMA vez de novo."""
+    _log = _log_de(callback_log)
+    aba = sel.ABA_DOCUMENTOS_EDICAO
+    if extrator.abrir_secao(portal, aba, callback_log):
+        return True
+    if condicoes.ficha_na_tela(portal):
+        return False
+    _log("   [!] A ficha saiu da tela antes de Documentos e imagens; "
+         "reabrindo a alvo em edição e tentando de novo.")
+    if not reabrir_alvo_em_edicao(portal, pmib_alvo, callback_log):
+        return False
+    return extrator.abrir_secao(portal, aba, callback_log)
+
+
 def ler_documentos_da_original(portal, callback_log=None, log_auditoria=None):
     """Descrições dos documentos da ficha original, lidas na VISUALIZAÇÃO.
 
@@ -646,12 +675,15 @@ def processar_ficha(portal, ficha, callback_log=None, log_auditoria=None):
         # não é a que eu preciso ver. Sem auditoria não custa nada.
         condicoes.fotografar_edicao(portal, log_auditoria, callback_log)
         resultado.registrar(
-            condicoes.escrever(portal, condicoes_da_original, callback_log))
+            condicoes.escrever(
+                portal, condicoes_da_original, callback_log,
+                recuperar=lambda: reabrir_alvo_em_edicao(
+                    portal, ficha.pmib, callback_log, para_condicoes=True)))
         # `ABA_DOCUMENTOS_EDICAO`: aqui a ficha ALVO está aberta para editar, e
         # nesse modo a aba se chama "Documentos e imagens". Passar o nome da
         # visualização foi o `[Erro] A aba 'Documentos' não existe nesta tela`
         # de 2026-08-20.
-        if extrator.abrir_secao(portal, sel.ABA_DOCUMENTOS_EDICAO, callback_log):
+        if abrir_documentos_e_imagens(portal, ficha.pmib, callback_log):
             resultado.registrar(documentos.associar(
                 portal, docs_da_original, callback_log,
                 escopo=extrator.id_do_painel(portal, sel.ABA_DOCUMENTOS_EDICAO),

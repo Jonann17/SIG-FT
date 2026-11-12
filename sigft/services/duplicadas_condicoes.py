@@ -376,10 +376,20 @@ def abrir_secao(portal, callback_log=None):
     time.sleep(PAUSA_ABERTURA_SECAO)
 
 
-def abrir_subaba(portal, nome, callback_log=None):
-    """Seleciona também Armazenamento: a auditoria pode ter deixado Descarte
-    aberta. Abrir o cabeçalho de Condições não reinicia a sub-aba ativa."""
-    reabrir_subaba(portal, nome, callback_log)
+def abrir_subaba(portal, nome, callback_log=None, recuperar=None):
+    """Seleciona a sub-aba `nome` na IDA. Devolve `True` se clicou.
+
+    Armazenamento já vem aberta; só se clica nela se a auditoria (ou outra
+    sub-aba) a tiver trocado. O portal REMOVE do DOM a sub-aba fechada, então
+    o campo-âncora dela na tela é a prova de que está aberta -- e não clicar
+    tira o clique de risco do caso comum. Devolve `True` também quando não
+    precisou clicar.
+    """
+    if nome == "Armazenamento":
+        ancora = ancora_da_subaba(nome)
+        if ancora and portal.engine.contar(ancora) == 1:
+            return True
+    return reabrir_subaba(portal, nome, callback_log, recuperar)
 
 
 def ler(portal, callback_log=None):
@@ -706,16 +716,75 @@ def _salvar_e_conferir(portal, nome, campos, callback_log=None):
     return True, divergencias_da_subaba(portal, nome, campos, callback_log)
 
 
-def reabrir_subaba(portal, nome, callback_log=None):
-    """Seleciona explicitamente a sub-aba, na ida e no repasse final."""
+def ficha_na_tela(portal):
+    """A ficha (com a aba de Condições) está na tela? Se a aba some, o clique
+    anterior levou o robô para fora dela."""
+    return bool(extrator.id_do_painel(portal, sel.NOME_DA_ABA_CONDICOES))
+
+
+def _ids_dos_casados(portal, xpath, total, limite=5):
+    """Ids dos contêineres `Title` (pais dos `div` casados): é o que diz QUAIS
+    seções o seletor antigo atingiria."""
+    ids = []
+    for i in range(1, min(total, limite) + 1):
+        try:
+            ids.append(portal.engine.atributo(f"({xpath})[{i}]/parent::*", "id") or "?")
+        except NavegadorFechado:
+            raise
+        except Exception:  # noqa: BLE001 -- diagnóstico não derruba a ficha
+            ids.append("?")
+    return ids
+
+
+def _clicar_subaba(portal, nome, callback_log=None):
+    """Clica a sub-aba só se o seletor, preso ao painel de Condições, casar
+    EXATAMENTE um elemento. Zero ou vários: não clica e registra."""
+    _log = _log_de(callback_log)
     posicao = sel.CONDICOES_POR_SUBABA[nome]["posicao"]
     if posicao is None:
         posicao = sel.POSICAO_ARMAZENAMENTO
-    portal.safe_click(sel.XPATH_CONDICOES_SUBABA.format(posicao=posicao))
+    painel = extrator.id_do_painel(portal, sel.NOME_DA_ABA_CONDICOES)
+    if painel:
+        xpath = sel.XPATH_CONDICOES_SUBABA_NO_PAINEL.format(
+            painel=extrator._literal_xpath(painel), posicao=posicao)
+        escopo = "no painel de Condições"
+    else:
+        xpath = sel.XPATH_CONDICOES_SUBABA.format(posicao=posicao)
+        escopo = "na página inteira (painel de Condições não achado)"
+    total = portal.engine.contar(xpath)
+    if total != 1:
+        detalhe = ""
+        if total > 1:
+            detalhe = f" ids: {', '.join(_ids_dos_casados(portal, xpath, total))}."
+        _log(f"      [!] Sub-aba «{nome}»: o seletor casou {total} elemento(s) "
+             f"{escopo}; não cliquei.{detalhe}")
+        return False
+    portal.safe_click(xpath)
     time.sleep(PAUSA_TROCA_SUBABA)
+    return True
 
 
-def repassar(portal, escritas, callback_log=None):
+def reabrir_subaba(portal, nome, callback_log=None, recuperar=None):
+    """Seleciona explicitamente a sub-aba, na ida e no repasse final.
+
+    Devolve `True` se clicou. Se a ficha saiu da tela e `recuperar` foi dado
+    (reabre a alvo em edição e volta a Condições), chama-o e tenta UMA vez de
+    novo -- não insiste: se a segunda também falha, o chamador vê o `False`.
+    """
+    _log = _log_de(callback_log)
+    if _clicar_subaba(portal, nome, callback_log):
+        return True
+    if recuperar is None or ficha_na_tela(portal):
+        return False
+    _log(f"      [!] A ficha saiu da tela antes de «{nome}»; reabrindo a alvo "
+         f"em edição e tentando de novo.")
+    if not recuperar():
+        _log(f"      [Erro] Não consegui reabrir a ficha alvo; «{nome}» não foi aberta.")
+        return False
+    return _clicar_subaba(portal, nome, callback_log)
+
+
+def repassar(portal, escritas, callback_log=None, recuperar=None):
     """O REPASSE FINAL: volta em cada sub-aba já salva e relê tudo.
 
     `escritas` = `{sub-aba: campos}` das que saíram salvas e conferidas.
@@ -732,7 +801,7 @@ def repassar(portal, escritas, callback_log=None):
     perdidas = {}
     lidas = 0
     for nome, campos in escritas.items():
-        reabrir_subaba(portal, nome, callback_log)
+        reabrir_subaba(portal, nome, callback_log, recuperar)
         if not esperar_subaba_montar(portal, nome, callback_log):
             perdidas[nome] = [(s, v, None) for s, v in campos.items()]
             continue
@@ -827,7 +896,7 @@ def conferir_ja_preenchida(portal, callback_log=None):
     return ResultadoDaSecao("condicoes", True, f"já preenchida ({total}/{total} campos)")
 
 
-def escrever(portal, condicoes, callback_log=None):
+def escrever(portal, condicoes, callback_log=None, recuperar=None):
     """Escreve as 4 sub-abas na ficha ALVO, salvando e CONFERINDO cada uma.
 
     Uma sub-aba por vez, com salvamento próprio -- é como o portal trata a
@@ -874,7 +943,7 @@ def escrever(portal, condicoes, callback_log=None):
         campos = condicoes.get(nome) or {}
         if not campos:
             continue
-        abrir_subaba(portal, nome, callback_log)
+        abrir_subaba(portal, nome, callback_log, recuperar)
 
         if not esperar_subaba_montar(portal, nome, callback_log):
             problemas.append(f"{nome}: sub-aba não carregada")
@@ -905,7 +974,7 @@ def escrever(portal, condicoes, callback_log=None):
 
     # O REPASSE: de volta em cada sub-aba que fechou, depois de passar pelas
     # outras. Só as que fecharam -- a que já saiu com erro está no log.
-    for nome, divergencias in repassar(portal, salvas, callback_log).items():
+    for nome, divergencias in repassar(portal, salvas, callback_log, recuperar).items():
         problemas.append(f"{nome}: {len(divergencias)} campo(s) mudaram "
                          f"depois de salvos")
 
