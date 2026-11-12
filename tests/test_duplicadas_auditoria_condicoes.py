@@ -90,9 +90,20 @@ def test_o_MESMO_rotulo_nao_e_repetido_na_lista(monkeypatch):
 # 2. A foto da ficha ALVO em EDIÇÃO
 # ===========================================================================
 
+class _EngineDeFoto:
+    """Uma coincidência por seletor, e nenhum painel (`atributo` vazio)."""
+
+    def contar(self, _seletor):
+        return 1
+
+    def atributo(self, _seletor, _nome):
+        return ""
+
+
 class _PortalDeFoto:
     def __init__(self):
         self.cliques = []
+        self.engine = _EngineDeFoto()
 
     def safe_click(self, seletor):
         self.cliques.append(seletor)

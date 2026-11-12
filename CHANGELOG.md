@@ -18,6 +18,7 @@ cliente HTTP para usar WinHttpGetProxyForUrl" não.
 - Upload de Ficha Duplicada: o salvamento de Condições exige o botão da própria seção. Se ele não aparece ou há mais de um candidato, o robô informa a pendência, sem acionar outro SALVAR da página.
 - Upload de Ficha Duplicada: a confirmação de salvamento passa a ser acompanhada logo após o clique, inclusive quando duas imagens ou duas tentativas mostram a mesma mensagem. Isso reduz os reenvios causados por uma confirmação que passava despercebida.
 - Upload de Ficha Duplicada: fechar o navegador interrompe o lote e informa quantas fichas não chegaram a começar. Os resultados parciais voltam à tela e à planilha; as fichas não iniciadas ficam sem alteração, e o resumo de tempos inclui a etapa interrompida.
+- Upload de Ficha Duplicada: o clique nas sub-abas de Condições (Armazenamento, Transporte, Manutenção, Descarte) passa a ser feito só dentro do painel de Condições e só quando há exatamente um elemento candidato; antes ele olhava a página inteira e podia cair no título de outra seção, tirando a ficha da tela. Armazenamento deixa de ser clicada quando já está aberta. Se mesmo assim a ficha sair da tela, o robô a reabre em edição, volta a Condições e tenta aquela sub-aba mais uma vez (o mesmo antes de Documentos e imagens), em vez de pedir que você reabra à mão; quando o seletor casa mais de um elemento, o log diz quantos e quais.
 
 ## 1.4.0 - 2026-11-10
 

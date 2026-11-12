@@ -900,6 +900,14 @@ XPATH_CONDICOES_ABRIR_SECAO = "//*[contains(@id, 'Conditions_Header')]//button"
 # que o módulo antigo usa e o que `upload_conditions` usa (lá com o id inteiro,
 # que este projeto proíbe). Armazenamento é a aba que já vem aberta.
 XPATH_CONDICOES_SUBABA = "//*[contains(@id, 'Title')]/div[{posicao}]"
+# ⚠️ O de cima olha a PÁGINA INTEIRA, e a ficha tem vários contêineres cujo id
+# termina em `Title`: um clique em «Armazenamento» (posição 1) pode cair no de
+# outra seção e tirar a ficha da tela. Este é o MESMO caminho preso ao painel
+# de Condições (`{painel}` = o `aria-controls` da aba, lido em tempo de
+# execução por `extrator.id_do_painel`). Só se clica quando casa UM elemento.
+XPATH_CONDICOES_SUBABA_NO_PAINEL = (
+    "//*[@id={painel}]//*[contains(@id, 'Title')]/div[{posicao}]"
+)
 # Posição de Armazenamento no cabeçalho, para VOLTAR a ela. No mapa abaixo a
 # posição dela é `None` ("já vem aberta") e continua sendo: só o repasse final
 # (`duplicadas_condicoes.repassar`) precisa voltar depois de passar pelas
